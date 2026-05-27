@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
   const firebaseConfig = {
     apiKey: "AIzaSyCdFXfoCBEZCT2tyRUHRJZT5tYbq8CHWWQ",
     authDomain: "kaizenlive.firebaseapp.com",
@@ -14,13 +13,13 @@
     appId: "1:659479963267:web:42e3bc0885ebfce7335db6"
   };
 
-  const app = initializeApp(firebaseConfig);
-  const db = getFirestore(app);
-  const DOC = doc(db, 'kaizen', 'state');
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const DOC = db.collection('kaizen').doc('state');
 
-  window._fbSave = async function(state) {
+  window._fbSave = async function(data) {
     try {
-      await setDoc(DOC, { data: JSON.stringify(state) });
+      await DOC.set({ data: JSON.stringify(data) });
       console.log('✓ Firebase guardado');
     } catch(e) {
       console.warn('Firebase save error:', e);
@@ -29,8 +28,8 @@
 
   window._fbLoad = async function() {
     try {
-      const snap = await getDoc(DOC);
-      if(snap.exists()) return JSON.parse(snap.data().data);
+      const snap = await DOC.get();
+      if(snap.exists) return JSON.parse(snap.data().data);
     } catch(e) {
       console.warn('Firebase load error:', e);
     }
@@ -38,13 +37,11 @@
   };
 
   window.addEventListener('DOMContentLoaded', async () => {
-    // Load from Firebase first
     const cloudData = await window._fbLoad();
     if(cloudData) {
       window.state = cloudData;
       localStorage.setItem('kaizen-pro-v1', JSON.stringify(cloudData));
       console.log('✓ Datos cargados desde Firebase');
-      // Re-render if go function exists
       if(window.go) window.go('dashboard');
     } else {
       console.log('ℹ️ Sin datos en Firebase aún');
