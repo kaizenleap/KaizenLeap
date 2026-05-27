@@ -1231,13 +1231,7 @@ const DEF = {
 };
 let state = JSON.parse(localStorage.getItem('kaizen-pro-v1')||'null') || JSON.parse(JSON.stringify(DEF));
 let persist = () => {
-  localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));
-  console.log('persist called, _fbSave:', typeof window._fbSave);
-  if(window._fbSave) {
-    window._fbSave(state);
-  } else {
-    console.warn('_fbSave no disponible todavía');
-  }
+  try { localStorage.setItem('kaizen-pro-v1', JSON.stringify(state)); } catch(e) {}
 };
 const uid = () => Math.random().toString(36).slice(2,9);
 const $ = s => document.querySelector(s);
