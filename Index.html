@@ -2881,7 +2881,7 @@ boot();
     if(n>=1000)return sign+'$'+(n/1000).toFixed(0)+'K';
     return sign+'$'+n;
   };
-  function save(){localStorage.setItem(LS,JSON.stringify(state));localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));}
+  function save(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){} try{localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));}catch(e){}}
   window.persist=save;
 
   function load(){
@@ -3129,7 +3129,20 @@ boot();
   window.loadClientLogoV5=function(ev){
     const file=ev.target.files[0]; if(!file)return;
     const reader=new FileReader();
-    reader.onload=()=>{ $('#cLogoData').value=reader.result; $('#cLogoPreview').innerHTML=`<div class="client-logo-v5"><img src="${reader.result}"></div>`; };
+    reader.onload=()=>{
+      const img=new Image();
+      img.onload=()=>{
+        const canvas=document.createElement('canvas');
+        const MAX=128; let w=img.width,h=img.height;
+        if(w>h){if(w>MAX){h=Math.round(h*MAX/w);w=MAX;}}else{if(h>MAX){w=Math.round(w*MAX/h);h=MAX;}}
+        canvas.width=w; canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        const compressed=canvas.toDataURL('image/jpeg',0.7);
+        $('#cLogoData').value=compressed;
+        $('#cLogoPreview').innerHTML=`<div class="client-logo-v5"><img src="${compressed}"></div>`;
+      };
+      img.src=reader.result;
+    };
     reader.readAsDataURL(file);
   }
   window.openClient=function(id){
