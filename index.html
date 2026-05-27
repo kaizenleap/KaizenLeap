@@ -946,43 +946,91 @@ nav::-webkit-scrollbar{display:none}
   margin-top:14px;line-height:1.5;
 }
 
-/* ── MOBILE ── */
+/* ── DESKTOP ONLY ELEMENTS ── */
+.topbar-desktop-only{display:inline-flex}
+@media(max-width:480px){
+  .topbar-desktop-only{display:none!important}
+}
+
+/* ── MOBILE TABLET ── */
 @media(max-width:768px){
   #sidebar{transform:translateX(-252px)}
   #sidebar.open{transform:translateX(0)}
-  #main{margin-left:0}
+  #main{margin-left:0;width:100%}
   .stat-row,.hero-grid,.g3,.g4{grid-template-columns:1fr 1fr}
   .g2{grid-template-columns:1fr}
-  .page{padding:18px}
+  .page{padding:16px}
   #menuBtn{display:block!important}
-  .topbar{padding:0 18px}
+
+  /* Topbar tablet */
+  .topbar{padding:0 14px;gap:8px;height:52px}
+  .topbar-status{display:none}
+  .topbar-title{font-size:15px}
+  .topbar-actions .btn{padding:6px 10px;font-size:11.5px}
 }
-/* ── MOBILE PEQUEÑO ── */
+
+/* ── MOBILE CELULAR ── */
 @media(max-width:480px){
+  /* Layout */
+  #main{margin-left:0;width:100%;max-width:100vw}
+  .page{padding:12px}
+
+  /* Topbar móvil: solo menú + título + botón principal */
+  .topbar{
+    padding:0 12px;gap:8px;
+    height:52px;
+    overflow:hidden;
+  }
+  .topbar-status{display:none}
+  .topbar-title{font-size:14px;font-weight:700;white-space:nowrap}
+  /* Ocultar botones secundarios en móvil, dejar solo + Cliente */
+  .topbar-actions{gap:6px}
+  .topbar-actions .btn.ghost{display:none}
+  .topbar-actions .btn.primary{padding:7px 12px;font-size:12px}
+  /* Ocultar botones extra que inyecta JS */
+  .topbar-actions .btn:not(.primary):not(#menuBtn){display:none}
+
+  /* Grids todos a 1 columna */
   .stat-row,.hero-grid,.g2,.g3,.g4{grid-template-columns:1fr}
   .form-grid{grid-template-columns:1fr}
-  .hero-section{padding:22px 18px}
-  .hero-section h1{font-size:22px}
-  .modal{padding:20px 18px}
-  .topbar-actions .btn{padding:6px 10px;font-size:11px}
   .advisor-score-v5{grid-template-columns:1fr 1fr}
   .kl-role-grid-v6{grid-template-columns:1fr}
-  .pipeline-col{min-height:120px}
-  .cal-day{min-height:44px;padding:4px}
+
+  /* Hero section */
+  .hero-section{padding:18px 14px}
+  .hero-section h1{font-size:20px}
+  .hero-section p{font-size:13px}
+
+  /* Cards y modales */
+  .card{padding:16px}
+  .modal{padding:18px 14px;width:95%}
+
+  /* Pipeline */
+  .pipeline-col{min-height:100px}
+
+  /* Calendario */
+  .cal-day{min-height:40px;padding:3px}
+  .cal-event{display:none}
+
+  /* Tablas: scroll horizontal */
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+  /* Stat cards */
+  .stat-card{padding:14px}
+  .stat-card .s-value{font-size:22px}
+
+  /* Metric boxes en hero */
+  .metric-box{padding:12px}
+  .metric-box strong{font-size:20px}
+
+  /* Botones de acción */
+  .actions{flex-wrap:wrap;gap:6px}
+  .btn{font-size:12px;padding:7px 12px}
+
+  /* Section title */
+  .section-title{font-size:16px}
 }
-/* ── MOBILE PEQUEÑO (<480px) ── */
-@media(max-width:480px){
-  .stat-row,.hero-grid,.g2,.g3,.g4{grid-template-columns:1fr}
-  .form-grid{grid-template-columns:1fr}
-  .hero-section{padding:22px 18px}
-  .hero-section h1{font-size:22px}
-  .modal{padding:20px 18px}
-  .topbar-actions .btn{padding:6px 10px;font-size:11px}
-  .advisor-score-v5{grid-template-columns:1fr 1fr}
-  .kl-role-grid-v6{grid-template-columns:1fr}
-  .pipeline-col{min-height:120px}
-  .cal-day{min-height:44px;padding:4px}
-}
+
 </style>
 <style id="kaizen-no-flash-sync-style">
   html.kaizen-syncing body{visibility:hidden!important;}
@@ -1218,14 +1266,14 @@ nav::-webkit-scrollbar{display:none}
 <!-- MAIN -->
 <main id="main">
   <div class="topbar">
-    <button style="display:none;background:none;border:none;color:var(--text);cursor:pointer;font-size:22px;line-height:1" id="menuBtn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+    <button style="display:none;background:none;border:none;color:var(--text);cursor:pointer;font-size:22px;line-height:1;flex-shrink:0" id="menuBtn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
     <div class="topbar-status">
       <div class="status-dot"></div>
       Sistema activo
     </div>
     <div class="topbar-actions">
-      <button class="btn ghost sm" onclick="exportData()">⬇ Exportar</button>
+      <button class="btn ghost sm topbar-desktop-only" onclick="exportData()">⬇ Exportar</button>
       <button class="btn primary sm" onclick="openModal('client')">+ Cliente</button>
     </div>
   </div>
