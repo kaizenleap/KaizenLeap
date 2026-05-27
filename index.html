@@ -1896,6 +1896,7 @@ body::before {
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<!-- KAIZEN MOBILE PACKAGES FIX v10 2026-05-27 -->
 </head>
 <body>
 
@@ -2101,6 +2102,10 @@ body::before {
     <button class="drawer-item" onclick="go('caso');closeMobileDrawer()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
       <span>Caso Éxito</span>
+    </button>
+    <button class="drawer-item" onclick="go('paquetes');closeMobileDrawer()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>
+      <span>Paquetes</span>
     </button>
     <button class="drawer-item" onclick="go('propuesta');closeMobileDrawer()">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
@@ -6255,6 +6260,21 @@ function closeMobileDrawer(){
     console.log('Kaizen V10 package manager fix loaded', {changed:changed, packages:Object.keys((window.state && state.packages) || {})});
   }
   setTimeout(bootFix, 300);
+})();
+</script>
+
+
+<script id="kaizen-mobile-packages-fix-v10">
+(function(){
+  window.__KAIZEN_MOBILE_PACKAGES_FIX = 'v10-mobile-packages-2026-05-27';
+  window.kaizenMobileNavStatus = function(){
+    return {
+      fix: window.__KAIZEN_MOBILE_PACKAGES_FIX,
+      hasPage: !!document.getElementById('page-paquetes'),
+      hasDrawerButton: !!document.querySelector("#mobileDrawer [onclick*=\"go('paquetes')\"]"),
+      persistenceVersion: (typeof kaizenSyncStatus === 'function' && kaizenSyncStatus().version) || null
+    };
+  };
 })();
 </script>
 
