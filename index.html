@@ -1205,13 +1205,21 @@ nav::-webkit-scrollbar{display:none}
   .stat-row,.hero-grid,.g3,.g4{grid-template-columns:1fr 1fr}
   .g2{grid-template-columns:1fr}
   .page{padding:16px}
-  #menuBtn{display:block!important}
+  #menuBtn{display:none!important}
 
   /* Topbar tablet */
-  .topbar{padding:0 14px;gap:8px;height:52px}
+  .topbar{padding:0 14px;gap:8px;min-height:52px;height:auto;padding-top:max(env(safe-area-inset-top,0px),0px)}
   .topbar-status{display:none}
   .topbar-title{font-size:15px}
   .topbar-actions .btn{padding:6px 10px;font-size:11.5px}
+
+  /* Ocultar todos los botones inyectados por JS excepto el ⋮ */
+  #themeToggle{display:none!important}
+  #searchBtn{display:none!important}
+  #roleBadgeV5{display:none!important}
+  #sidebarOpenBtn{display:none!important}
+  .topbar-actions > .btn.ghost{display:none!important}
+  .topbar-actions > .topbar-desktop-only{display:none!important}
 }
 
 /* ── MOBILE CELULAR ── */
@@ -1222,9 +1230,11 @@ nav::-webkit-scrollbar{display:none}
 
   /* Topbar móvil: solo menú + título + botón principal */
   .topbar{
-    padding:0 12px;gap:8px;
-    height:52px;
-    overflow:hidden;
+    padding-left:12px;padding-right:12px;gap:8px;
+    padding-top:max(env(safe-area-inset-top, 0px), 12px);
+    height:auto;
+    min-height:52px;
+    align-items:center;
   }
   .topbar-status{display:none}
   .topbar-title{font-size:14px;font-weight:700;white-space:nowrap}
