@@ -5536,7 +5536,6 @@ function closeMobileDrawer(){
   var DEFAULT_PACKAGES = {
     'Promo Confianza': {price:950000,sessions:4,presentadora:200000,editora:475000,grabacion:0,cm:0,transporte:0,otros:0},
     'Presencia': {price:2000000,sessions:4,presentadora:360000,editora:500000,grabacion:300000,cm:0,transporte:50000,otros:0},
-    'Expansion': {price:3500000,sessions:6,presentadora:600000,editora:850000,grabacion:450000,cm:150000,transporte:70000,otros:0},
     'Expansión': {price:3500000,sessions:6,presentadora:600000,editora:850000,grabacion:450000,cm:150000,transporte:70000,otros:0},
     'Influencia': {price:6000000,sessions:8,presentadora:960000,editora:1200000,grabacion:700000,cm:400000,transporte:100000,otros:0}
   };
@@ -5945,5 +5944,319 @@ function closeMobileDrawer(){
   } catch(e) {}
 })();
 </script>
+
+
+<!-- KAIZEN V10 PACKAGE MANAGER FIX: dedupe + reliable edit/delete without touching persistence core -->
+<script id="kaizen-v10-package-manager-fix">
+(function(){
+  if(window.__kaizenPackageManagerFixV10Loaded) return;
+  window.__kaizenPackageManagerFixV10Loaded = true;
+
+  var FIX_VERSION = 'v10-package-manager-fix-2026-05-27';
+  var OFFICIAL_ORDER = ['Promo Confianza','Presencia','Expansión','Influencia'];
+  var BASE_PACKAGE = {price:0,sessions:0,presentadora:0,editora:0,grabacion:0,cm:0,transporte:0,otros:0};
+  var PACKAGE_FIELDS = [
+    ['price','Precio'],
+    ['sessions','Sesiones'],
+    ['presentadora','Presentadora'],
+    ['editora','Editora'],
+    ['grabacion','Grabación'],
+    ['cm','Community manager'],
+    ['transporte','Transporte'],
+    ['otros','Otros']
+  ];
+
+  function $(sel){ return (window.$ ? window.$(sel) : document.querySelector(sel)); }
+  function isObj(v){ return !!v && typeof v === 'object' && !Array.isArray(v); }
+  function clone(v){ try { return JSON.parse(JSON.stringify(v)); } catch(e) { return v; } }
+  function normText(v){
+    return String(v || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/\s+/g,' ');
+  }
+  function canonicalPackageName(name){
+    var n = normText(name);
+    if(n === 'promo confianza' || n === 'confianza') return 'Promo Confianza';
+    if(n === 'presencia') return 'Presencia';
+    if(n === 'expansion') return 'Expansión';
+    if(n === 'influencia') return 'Influencia';
+    return String(name || '').trim();
+  }
+  function official(name){ return OFFICIAL_ORDER.indexOf(name) !== -1; }
+  function escapeHTML(v){
+    return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+  }
+  function fmtMoney(n){
+    n = Number(n || 0);
+    if(window.fmtShort) return window.fmtShort(n);
+    if(Math.abs(n) >= 1000000) return '$' + (n/1000000).toFixed(n%1000000?1:0) + 'M';
+    if(Math.abs(n) >= 1000) return '$' + Math.round(n/1000) + 'K';
+    return '$' + n.toLocaleString('es-CO');
+  }
+  function pkgCostLocal(name){
+    if(window.pkgCost) return window.pkgCost(name);
+    var p = (window.state && state.packages && state.packages[name]) || {};
+    return ['presentadora','editora','grabacion','cm','transporte','otros'].reduce(function(s,k){ return s + Number(p[k] || 0); },0);
+  }
+  function toast(msg){ if(window.toast) window.toast(msg); else console.log(msg); }
+  function canAdmin(){ return !window.isAdmin || window.isAdmin(); }
+  function markAndSave(reason){
+    try {
+      if(window.state && typeof state === 'object'){
+        state.__updatedAt = Date.now();
+        state.__packageFixVersion = FIX_VERSION;
+      }
+    } catch(e) {}
+    if(typeof window.kaizenForceSave === 'function') return window.kaizenForceSave();
+    if(typeof window.persist === 'function') return window.persist();
+    if(typeof window.save === 'function') return window.save();
+    return null;
+  }
+  function afterChange(reason){
+    markAndSave(reason || 'package-fix');
+    try { if(typeof window.fillSelects === 'function') window.fillSelects(); } catch(e) {}
+    try { if(typeof window.updateBadges === 'function') window.updateBadges(); } catch(e) {}
+    try { if((window.currentPage || localStorage.getItem('kaizen-last-page')) === 'paquetes') window.renderPaquetes(); } catch(e) {}
+  }
+
+  window.kaizenNormalizePackagesV10 = function(options){
+    options = options || {};
+    if(!window.state || !isObj(state)) return false;
+    state.packages = isObj(state.packages) ? state.packages : {};
+    state.catalog = isObj(state.catalog) ? state.catalog : {};
+
+    var oldPackages = state.packages;
+    var oldCatalog = state.catalog;
+    var nextPackages = {};
+    var nextCatalog = {};
+    var changed = false;
+    var nameMap = {};
+
+    Object.keys(oldPackages).forEach(function(original){
+      var clean = String(original || '').trim();
+      if(!clean) { changed = true; return; }
+      var canon = canonicalPackageName(clean);
+      nameMap[clean] = canon;
+      if(clean !== canon) changed = true;
+      var currentPkg = Object.assign({}, BASE_PACKAGE, clone(oldPackages[clean]) || {});
+      if(nextPackages[canon]){
+        if(clean === canon) nextPackages[canon] = Object.assign({}, nextPackages[canon], currentPkg);
+        else nextPackages[canon] = Object.assign({}, currentPkg, nextPackages[canon]);
+        changed = true;
+      } else {
+        nextPackages[canon] = currentPkg;
+      }
+    });
+
+    Object.keys(oldCatalog).forEach(function(original){
+      var clean = String(original || '').trim();
+      if(!clean) { changed = true; return; }
+      var canon = canonicalPackageName(clean);
+      nameMap[clean] = canon;
+      var incoming = clone(oldCatalog[clean]) || {};
+      if(nextCatalog[canon]){
+        if(clean === canon) nextCatalog[canon] = Object.assign({}, nextCatalog[canon], incoming);
+        else nextCatalog[canon] = Object.assign({}, incoming, nextCatalog[canon]);
+        changed = true;
+      } else {
+        nextCatalog[canon] = incoming;
+      }
+    });
+
+    // Preserve official order first, then custom packages alphabetically.
+    var orderedPackages = {};
+    OFFICIAL_ORDER.forEach(function(name){ if(nextPackages[name]) orderedPackages[name] = nextPackages[name]; });
+    Object.keys(nextPackages).sort().forEach(function(name){ if(!orderedPackages[name]) orderedPackages[name] = nextPackages[name]; });
+
+    var orderedCatalog = {};
+    Object.keys(orderedPackages).forEach(function(name){ orderedCatalog[name] = nextCatalog[name] || oldCatalog[name] || {subtitle:'',deliverables:[],salesNote:''}; });
+
+    state.packages = orderedPackages;
+    state.catalog = orderedCatalog;
+
+    ['clients','prospects'].forEach(function(listName){
+      if(!Array.isArray(state[listName])) return;
+      state[listName].forEach(function(item){
+        ['pkg','normalPackage','package'].forEach(function(k){
+          if(item && item[k]){
+            var newName = canonicalPackageName(item[k]);
+            if(newName && state.packages[newName] && item[k] !== newName){ item[k] = newName; changed = true; }
+          }
+        });
+      });
+    });
+
+    if(JSON.stringify(oldPackages) !== JSON.stringify(state.packages)) changed = true;
+    if(JSON.stringify(oldCatalog) !== JSON.stringify(state.catalog)) changed = true;
+
+    if(changed && options.save !== false) afterChange('normalize-packages');
+    return changed;
+  };
+
+  function sortedEntries(){
+    window.kaizenNormalizePackagesV10({save:false});
+    var entries = Object.entries(state.packages || {});
+    entries.sort(function(a,b){
+      var ia = OFFICIAL_ORDER.indexOf(a[0]);
+      var ib = OFFICIAL_ORDER.indexOf(b[0]);
+      if(ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      return a[0].localeCompare(b[0], 'es');
+    });
+    return entries;
+  }
+
+  function packageCard(name, p, admin, idx){
+    var cat = (state.catalog && state.catalog[name]) || {subtitle:'',deliverables:[],salesNote:''};
+    var cost = pkgCostLocal(name);
+    var net = Number(p.price || 0) - cost;
+    var mg = p.price ? Math.round(net / Number(p.price || 1) * 100) : 0;
+    var usedBy = (state.clients || []).filter(function(c){ return c.pkg === name || c.normalPackage === name; }).length;
+    var fields = PACKAGE_FIELDS.map(function(pair){
+      var key = pair[0], label = pair[1];
+      return '<div class="field"><label>'+escapeHTML(label)+'</label><input type="number" data-kz-pkg-field="'+escapeHTML(key)+'" data-kz-pkg-name="'+escapeHTML(name)+'" value="'+escapeHTML(p[key] || 0)+'"></div>';
+    }).join('');
+    var deliverables = Array.isArray(cat.deliverables) ? cat.deliverables : [];
+    var badgeClass = name === 'Promo Confianza' ? 'gold' : name === 'Expansión' ? 'blue' : name === 'Influencia' ? 'purple' : 'green';
+    return '<div class="card" data-kz-package-card="'+escapeHTML(name)+'">'
+      + '<div class="card-header"><div><h3 style="margin-bottom:4px">'+escapeHTML(name)+'</h3><div style="font-size:12px;color:var(--sub)">'+(official(name)?'Paquete oficial':'Paquete personalizado')+(usedBy?' · usado por '+usedBy+' cliente(s)':'')+'</div></div><span class="tag '+badgeClass+'">'+escapeHTML(fmtMoney(p.price))+' · '+mg+'%</span></div>'
+      + '<p style="color:var(--sub);font-size:14px;margin-bottom:14px">'+escapeHTML(cat.subtitle || 'Sin descripción.')+'</p>'
+      + '<div class="grid g4"><div class="metric-box"><label>Precio</label><strong>'+escapeHTML(fmtMoney(p.price))+'</strong></div><div class="metric-box"><label>Sesiones</label><strong>'+escapeHTML(p.sessions || 0)+'</strong></div>'
+      + (admin ? '<div class="metric-box"><label>Costo</label><strong style="color:var(--red)">'+escapeHTML(fmtMoney(cost))+'</strong></div><div class="metric-box"><label>Neto</label><strong>'+escapeHTML(fmtMoney(net))+'</strong></div>' : '')
+      + '</div>'
+      + '<div class="package-deliverables-v5">'+(deliverables.length ? deliverables.map(function(d){ return '<div class="deliverable-v5"><span>'+escapeHTML(d)+'</span><span style="color:var(--accent)">✓</span></div>'; }).join('') : '<div class="deliverable-v5"><span>Sin entregables definidos</span><span style="color:var(--sub)">—</span></div>')+'</div>'
+      + (admin ? '<hr class="divider"><div class="actions" style="margin-bottom:12px"><button class="btn ghost sm" data-kz-rename-package="'+escapeHTML(name)+'">Renombrar</button>'
+          + (official(name) ? '<button class="btn ghost sm" disabled title="Los paquetes oficiales están protegidos para evitar que el sistema los vuelva a crear.">Oficial protegido</button>' : '<button class="btn danger sm" data-kz-delete-package="'+escapeHTML(name)+'">Eliminar</button>')
+          + '</div><div class="form-grid">'+fields+'</div>'
+          + '<div class="field"><label>Descripción comercial</label><input data-kz-cat-field="subtitle" data-kz-pkg-name="'+escapeHTML(name)+'" value="'+escapeHTML(cat.subtitle || '')+'"></div>'
+          + '<div class="field"><label>Contenido vendido / entregables, una línea por ítem</label><textarea data-kz-cat-field="deliverables" data-kz-pkg-name="'+escapeHTML(name)+'">'+escapeHTML(deliverables.join('\n'))+'</textarea></div>'
+          + '<div class="field"><label>Nota de venta</label><textarea data-kz-cat-field="salesNote" data-kz-pkg-name="'+escapeHTML(name)+'">'+escapeHTML(cat.salesNote || '')+'</textarea></div>' : '')
+      + '</div>';
+  }
+
+  window.renderPaquetes = function(){
+    window.kaizenNormalizePackagesV10({save:false});
+    var admin = canAdmin();
+    var guide = typeof window.guideBox === 'function' ? window.guideBox('paquetes') : '<div class="notice" style="margin-bottom:16px"><b>Guía rápida</b><br>Actualiza aquí el catálogo. Esto alimenta propuesta, finanzas, clientes y simulador.</div>';
+    var entries = sortedEntries();
+    var content = $('#paquetes-content');
+    if(!content) return;
+    content.innerHTML = guide
+      + '<div class="split" style="margin-bottom:20px"><div><div class="section-title">Catálogo de paquetes</div><div style="color:var(--sub);font-size:14px">V10 estable: se mantiene el guardado actual. Esta sección solo corrige duplicados, edición y eliminación de paquetes personalizados.</div></div>'
+      + (admin ? '<div class="actions"><button class="btn ghost" data-kz-normalize-packages>Reparar duplicados</button><button class="btn primary" data-kz-add-package>+ Paquete</button></div>' : '')
+      + '</div><div class="grid g2">'+entries.map(function(entry, idx){ return packageCard(entry[0], entry[1], admin, idx); }).join('')+'</div>';
+  };
+
+  window.updatePackageV6 = function(name, key, val){
+    if(!canAdmin()) return toast('Solo administrador');
+    window.kaizenNormalizePackagesV10({save:false});
+    name = canonicalPackageName(name);
+    if(!state.packages[name]) state.packages[name] = Object.assign({}, BASE_PACKAGE);
+    state.packages[name][key] = Number(val || 0);
+    afterChange('package-field');
+    toast('Paquete actualizado ✓');
+  };
+
+  window.updateCatalogV6 = function(name, key, val){
+    if(!canAdmin()) return toast('Solo administrador');
+    window.kaizenNormalizePackagesV10({save:false});
+    name = canonicalPackageName(name);
+    state.catalog[name] = state.catalog[name] || {subtitle:'',deliverables:[],salesNote:''};
+    state.catalog[name][key] = key === 'deliverables' ? String(val || '').split('\n').map(function(x){ return x.trim(); }).filter(Boolean) : String(val || '');
+    afterChange('catalog-field');
+    toast('Catálogo actualizado ✓');
+  };
+
+  window.addPackageV10 = function(){
+    if(!canAdmin()) return toast('Solo administrador');
+    var raw = prompt('Nombre del nuevo paquete');
+    if(!raw) return;
+    var name = canonicalPackageName(raw);
+    if(!name) return;
+    window.kaizenNormalizePackagesV10({save:false});
+    if(state.packages[name]) return toast('Ese paquete ya existe');
+    state.packages[name] = Object.assign({}, BASE_PACKAGE);
+    state.catalog[name] = {subtitle:'',deliverables:[],salesNote:''};
+    afterChange('add-package');
+    toast('Paquete creado ✓');
+  };
+
+  window.renamePackageV10 = function(oldName){
+    if(!canAdmin()) return toast('Solo administrador');
+    window.kaizenNormalizePackagesV10({save:false});
+    oldName = canonicalPackageName(oldName);
+    var raw = prompt('Nuevo nombre del paquete', oldName);
+    if(!raw) return;
+    var newName = canonicalPackageName(raw);
+    if(!newName || newName === oldName) return;
+    if(state.packages[newName] && !confirm('Ya existe "'+newName+'". ¿Fusionar este paquete con ese nombre?')) return;
+    state.packages[newName] = Object.assign({}, BASE_PACKAGE, state.packages[newName] || {}, state.packages[oldName] || {});
+    delete state.packages[oldName];
+    state.catalog[newName] = Object.assign({}, state.catalog[newName] || {}, state.catalog[oldName] || {});
+    delete state.catalog[oldName];
+    (state.clients || []).forEach(function(c){ if(c.pkg === oldName) c.pkg = newName; if(c.normalPackage === oldName) c.normalPackage = newName; });
+    (state.prospects || []).forEach(function(p){ if(p.pkg === oldName) p.pkg = newName; if(p.package === oldName) p.package = newName; });
+    afterChange('rename-package');
+    toast('Paquete renombrado ✓');
+  };
+
+  window.deletePackageV10 = function(name){
+    if(!canAdmin()) return toast('Solo administrador');
+    window.kaizenNormalizePackagesV10({save:false});
+    name = canonicalPackageName(name);
+    if(official(name)) return toast('Este paquete oficial está protegido');
+    if(!state.packages[name]) return toast('El paquete no existe');
+    var affected = (state.clients || []).filter(function(c){ return c.pkg === name || c.normalPackage === name; });
+    if(affected.length){
+      var replacement = prompt('Este paquete está usado por '+affected.length+' cliente(s). Escribe el paquete de reemplazo:', 'Presencia');
+      if(!replacement) return;
+      replacement = canonicalPackageName(replacement);
+      if(!state.packages[replacement]) return toast('El paquete de reemplazo no existe');
+      affected.forEach(function(c){ if(c.pkg === name) c.pkg = replacement; if(c.normalPackage === name) c.normalPackage = replacement; });
+    }
+    if(!confirm('Eliminar paquete "'+name+'"?')) return;
+    delete state.packages[name];
+    delete state.catalog[name];
+    afterChange('delete-package');
+    toast('Paquete eliminado ✓');
+  };
+
+  document.addEventListener('change', function(ev){
+    var el = ev.target;
+    if(!el || !canAdmin()) return;
+    var pkg = el.getAttribute && el.getAttribute('data-kz-pkg-name');
+    if(!pkg) return;
+    var pkgField = el.getAttribute('data-kz-pkg-field');
+    var catField = el.getAttribute('data-kz-cat-field');
+    if(pkgField) window.updatePackageV6(pkg, pkgField, el.value);
+    if(catField) window.updateCatalogV6(pkg, catField, el.value);
+  }, true);
+
+  document.addEventListener('click', function(ev){
+    var el = ev.target;
+    while(el && el !== document){
+      if(el.hasAttribute && el.hasAttribute('data-kz-add-package')){ ev.preventDefault(); window.addPackageV10(); return; }
+      if(el.hasAttribute && el.hasAttribute('data-kz-normalize-packages')){ ev.preventDefault(); window.kaizenNormalizePackagesV10({save:true}); window.renderPaquetes(); toast('Catálogo reparado ✓'); return; }
+      if(el.hasAttribute && el.hasAttribute('data-kz-rename-package')){ ev.preventDefault(); window.renamePackageV10(el.getAttribute('data-kz-rename-package')); return; }
+      if(el.hasAttribute && el.hasAttribute('data-kz-delete-package')){ ev.preventDefault(); window.deletePackageV10(el.getAttribute('data-kz-delete-package')); return; }
+      el = el.parentNode;
+    }
+  }, true);
+
+  // Run once after V10 has restored Firebase/localStorage so the duplicate unaccented package disappears permanently.
+  function bootFix(){
+    var ready = false;
+    try { ready = !window.kaizenSyncStatus || window.kaizenSyncStatus().restoreDone; } catch(e) { ready = true; }
+    if(!ready) return setTimeout(bootFix, 250);
+    var changed = window.kaizenNormalizePackagesV10({save:false});
+    if(changed) afterChange('boot-package-dedupe');
+    try {
+      if((window.currentPage || localStorage.getItem('kaizen-last-page')) === 'paquetes') window.renderPaquetes();
+    } catch(e) {}
+    console.log('Kaizen V10 package manager fix loaded', {changed:changed, packages:Object.keys((window.state && state.packages) || {})});
+  }
+  setTimeout(bootFix, 300);
+})();
+</script>
+
 </body>
 </html>
