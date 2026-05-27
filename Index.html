@@ -2126,7 +2126,7 @@ boot();
     baseEvents.forEach(e=>{ if(!state.events.some(x=>x.id===e.id)) state.events.push(e); });
     save();
   }
-  function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); localStorage.setItem('kaizen-pro-v1', JSON.stringify(state)); }
+  function save(){ try{localStorage.setItem(LS_KEY, JSON.stringify(state));}catch(e){} try{localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));}catch(e){} if(window._fbSave) window._fbSave(window.state); }
   window.persist = save;
 
   function clientPrice(c){ return Number((state.packages[c.pkg]||{}).price || c.price || 0); }
@@ -2445,8 +2445,9 @@ boot();
     save();
   }
   function save(){
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
-    localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));
+    try{localStorage.setItem(LS_KEY, JSON.stringify(state));}catch(e){}
+    try{localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));}catch(e){}
+    if(window._fbSave) window._fbSave(window.state);
   }
   window.persist = save;
 
@@ -2904,7 +2905,7 @@ boot();
     if(n>=1000)return sign+'$'+(n/1000).toFixed(0)+'K';
     return sign+'$'+n;
   };
-  function save(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){} try{localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));}catch(e){}}
+  function save(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){} try{localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));}catch(e){} if(window._fbSave) window._fbSave(window.state);}
   window.persist=save;
 
   function load(){
