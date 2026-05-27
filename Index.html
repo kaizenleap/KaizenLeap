@@ -1,61 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyCdFXfoCBEZCT2tyRUHRJZT5tYbq8CHWWQ",
-    authDomain: "kaizenlive.firebaseapp.com",
-    projectId: "kaizenlive",
-    storageBucket: "kaizenlive.firebasestorage.app",
-    messagingSenderId: "659479963267",
-    appId: "1:659479963267:web:42e3bc0885ebfce7335db6"
-  };
-
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
-  const DOC = db.collection('kaizen').doc('state');
-
-  window._fbSave = async function(data) {
-    try {
-      await DOC.set({ data: JSON.stringify(data) });
-      console.log('✓ Firebase guardado');
-    } catch(e) {
-      console.warn('Firebase save error:', e);
-    }
-  };
-
-  window._fbLoad = async function() {
-    try {
-      const snap = await DOC.get();
-      if(snap.exists) return JSON.parse(snap.data().data);
-    } catch(e) {
-      console.warn('Firebase load error:', e);
-    }
-    return null;
-  };
-
-  window.addEventListener('DOMContentLoaded', async () => {
-    const cloudData = await window._fbLoad();
-    if(cloudData) {
-      window.state = cloudData;
-      try{localStorage.setItem('kaizen-pro-v1', JSON.stringify(cloudData))}catch(e){}
-      console.log('✓ Datos cargados desde Firebase');
-      if(window.go) window.go('dashboard');
-    } else {
-      console.log('ℹ️ Sin datos en Firebase aún');
-    }
-
-    // Override persist to also save to Firebase
-    const _origPersist = persist;
-    persist = function() {
-      _origPersist();
-      window._fbSave(window.state);
-    };
-    console.log('✓ Firebase hook activado');
-  });
-</script>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Kaizen LiveOps PRO · Agencia #1</title>
@@ -992,6 +937,36 @@ nav::-webkit-scrollbar{display:none}
   .topbar{padding:0 18px}
 }
 </style>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyCdFXfoCBEZCT2tyRUHRJZT5tYbq8CHWWQ",
+    authDomain: "kaizenlive.firebaseapp.com",
+    projectId: "kaizenlive",
+    storageBucket: "kaizenlive.firebasestorage.app",
+    messagingSenderId: "659479963267",
+    appId: "1:659479963267:web:42e3bc0885ebfce7335db6"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const _fbDB = firebase.firestore();
+  const _fbDOC = _fbDB.collection("kaizen").doc("state");
+  window._fbSave = async function(data) {
+    try { await _fbDOC.set({ data: JSON.stringify(data) }); console.log("✓ Firebase guardado"); } catch(e) { console.warn("Firebase save error:", e); }
+  };
+  window._fbLoad = async function() {
+    try { const s = await _fbDOC.get(); if(s.exists) return JSON.parse(s.data().data); } catch(e) { console.warn("Firebase load error:", e); }
+    return null;
+  };
+  window.addEventListener("DOMContentLoaded", async () => {
+    const d = await window._fbLoad();
+    if(d) { window.state = d; console.log("✓ Datos cargados desde Firebase"); if(window.go) window.go("dashboard"); }
+    else { console.log("Sin datos en Firebase aún"); }
+    const _op = persist;
+    persist = function() { _op(); window._fbSave(window.state); };
+    console.log("✓ Firebase hook activado");
+  });
+</script>
 </head>
 <body>
 
@@ -1230,9 +1205,7 @@ const DEF = {
   settings:{autoResetWeekly:false,lastResetWeek:''}
 };
 let state = JSON.parse(localStorage.getItem('kaizen-pro-v1')||'null') || JSON.parse(JSON.stringify(DEF));
-let persist = () => {
-  try { localStorage.setItem('kaizen-pro-v1', JSON.stringify(state)); } catch(e) {}
-};
+let persist = () => { try{localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));}catch(e){} };
 const uid = () => Math.random().toString(36).slice(2,9);
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
@@ -2131,7 +2104,7 @@ boot();
     baseEvents.forEach(e=>{ if(!state.events.some(x=>x.id===e.id)) state.events.push(e); });
     save();
   }
-  function save(){ try{localStorage.setItem(LS_KEY, JSON.stringify(state));}catch(e){} try{localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));}catch(e){}
+  function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); localStorage.setItem('kaizen-pro-v1', JSON.stringify(state)); }
   window.persist = save;
 
   function clientPrice(c){ return Number((state.packages[c.pkg]||{}).price || c.price || 0); }
@@ -2449,8 +2422,8 @@ boot();
     save();
   }
   function save(){
-    try{localStorage.setItem(LS_KEY, JSON.stringify(state))}catch(e){}
-    try{localStorage.setItem('kaizen-pro-v1', JSON.stringify(state))}catch(e){}
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));
   }
   window.persist = save;
 
@@ -2908,7 +2881,7 @@ boot();
     if(n>=1000)return sign+'$'+(n/1000).toFixed(0)+'K';
     return sign+'$'+n;
   };
-  function save(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){} try{localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));}catch(e){}
+  function save(){localStorage.setItem(LS,JSON.stringify(state));localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));}
   window.persist=save;
 
   function load(){
@@ -3479,8 +3452,8 @@ boot();
       {id:'e_sp_report',title:'Reporte Superpizza FA3 · cierre mes promo',date:'2026-06-30',type:'Reporte',client:'Superpizza FA3'}
     ];
     baseEvents.forEach(e=>{if(!state.events.some(x=>x.id===e.id))state.events.push(e)});
-    try{localStorage.setItem(LS_V6,JSON.stringify(state))}catch(e){}
-    try{localStorage.setItem('kaizen-pro-v1',JSON.stringify(state))}catch(e){}
+    localStorage.setItem(LS_V6,JSON.stringify(state));
+    localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));
   }
 
   function roleV6(){return sessionStorage.getItem(SESSION_V6)||''}
@@ -3644,8 +3617,8 @@ boot();
   window.updatePackageV6=function(name,key,val){
     if(!window.isAdmin())return toast('Solo administrador');
     state.packages[name][key]=Number(val||0);
-    try{localStorage.setItem(LS_V6,JSON.stringify(state))}catch(e){}
-    try{localStorage.setItem('kaizen-pro-v1',JSON.stringify(state))}catch(e){}
+    localStorage.setItem(LS_V6,JSON.stringify(state));
+    localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));
     renderPaquetes();
     toast('Paquete actualizado');
   }
@@ -3653,8 +3626,8 @@ boot();
     if(!window.isAdmin())return toast('Solo administrador');
     state.catalog[name]=state.catalog[name]||{};
     state.catalog[name][key]=key==='deliverables'?val.split('\n').map(x=>x.trim()).filter(Boolean):val;
-    try{localStorage.setItem(LS_V6,JSON.stringify(state))}catch(e){}
-    try{localStorage.setItem('kaizen-pro-v1',JSON.stringify(state))}catch(e){}
+    localStorage.setItem(LS_V6,JSON.stringify(state));
+    localStorage.setItem('kaizen-pro-v1',JSON.stringify(state));
     renderPaquetes();
     toast('Catálogo actualizado');
   }
