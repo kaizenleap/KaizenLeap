@@ -38,7 +38,7 @@
   --border2:#252840;
   --border3:#2e3248;
   --accent:#b8ff3f;
-  --accent-dim:var(--accent-dim);
+  --accent-dim:rgba(184,255,63,.08);
   --accent-glow:rgba(184,255,63,.15);
   --accent2:#6e51f7;
   --accent3:#ff5f38;
@@ -2329,7 +2329,28 @@ const DEF = {
   settings:{autoResetWeekly:false,lastResetWeek:''}
 };
 let state = JSON.parse(localStorage.getItem('kaizen-pro-v1')||'null') || JSON.parse(JSON.stringify(DEF));
-let persist = () => { try{localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));}catch(e){} };
+
+// ─── PERSIST: guarda en TODAS las keys que el sistema V7 usa ─────────────────
+const ALL_SYNC_KEYS = [
+  'kaizen-pro-v1',
+  'kaizen-liveops-pro-v6',
+  'kaizen-liveops-pro-v5',
+  'kaizen-liveops-pro-v4-empresarial',
+  'kaizen-pro-v2-completo'
+];
+let persist = () => {
+  try {
+    state.__updatedAt = Date.now();
+    window.state = state;
+    const json = JSON.stringify(state);
+    ALL_SYNC_KEYS.forEach(k => { try { localStorage.setItem(k, json); } catch(e) {} });
+    // Disparar guardado en Firebase si está disponible
+    if (typeof window.kaizenForceSave === 'function') {
+      clearTimeout(window._kaizenPersistTimer);
+      window._kaizenPersistTimer = setTimeout(() => window.kaizenForceSave(), 300);
+    }
+  } catch(e) { console.warn('persist error:', e); }
+};
 const uid = () => Math.random().toString(36).slice(2,9);
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
@@ -4873,8 +4894,8 @@ boot();
     --bg:#060709;--surface:#0c0d12;--surface2:#12141c;--surface3:#181b24;
     --border:#1c1f2e;--border2:#252840;--border3:#2e3248;
     --text:#e8eaf8;--text2:#c4c8e0;--sub:#6b7094;--sub2:#4a4e6e;
-    --accent:#b8ff3f;--accent-dim:var(--accent-dim);--accent-glow:rgba(184,255,63,.15);
-    --glow-accent:0 0 60px var(--accent-glow);
+    --accent:#b8ff3f;--accent-dim:rgba(184,255,63,.08);--accent-glow:rgba(184,255,63,.15);
+    --glow-accent:0 0 60px rgba(184,255,63,.15);
   `;
 
   const themeStyle = document.createElement('style');
@@ -5563,6 +5584,14 @@ boot();
     writeLocal(real);
     lastSnapshot = JSON.stringify(real);
 
+    // Si Firebase no está disponible, marcamos syncReady de todas formas
+    // para que el guardado local siempre funcione
+    if(!getDoc()){
+      syncReady = true;
+      window._fbAllowSave = true;
+      return;
+    }
+
     if(!syncReady && reason !== 'force' && reason !== 'manual') return;
 
     const doc = getDoc();
@@ -5656,7 +5685,17 @@ boot();
       'openMemberModal','previewMemberPhoto',
       'saveEvent','saveReport','toggleOnboarding','saveGoalV5','savePackageV5',
       'exportData','loginAdminV5','loginOperatorV5'
-    ].forEach(fn=>{ if(typeof window[fn]==='function' && !window[fn].__wrapped){ const orig=window[fn]; window[fn]=function(){return orig.apply(this,arguments);}; window[fn].__wrapped=true; } });
+    ].forEach(fn=>{
+      if(typeof window[fn]==='function' && !window[fn].__kaizenSyncWrapped){
+        const orig=window[fn];
+        window[fn]=function(){
+          const result=orig.apply(this,arguments);
+          setTimeout(()=>saveNow(fn), 80);
+          return result;
+        };
+        window[fn].__kaizenSyncWrapped=true;
+      }
+    });
 
     const go = window.go;
     if(typeof go === 'function' && !go.__kaizenPageWrapped){
