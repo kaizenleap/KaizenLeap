@@ -1013,7 +1013,6 @@ nav::-webkit-scrollbar{display:none}
   window._fbSave = async function(data, opts){
     if(!data) return;
     if(!window._fbAllowSave && !(opts && opts.force)){
-      console.log('Firebase save ignorado durante arranque');
       return;
     }
     clearTimeout(_fbTimer);
@@ -4354,16 +4353,247 @@ boot();
 })();
 </script>
 
+
+
 <script>
-/* Firebase sanity helper */
-window.kaizenSyncStatus = function(){
-  return {
-    firebaseReady: !!window._fbAllowSave,
-    lastPage: localStorage.getItem('kaizen-last-page') || 'dashboard',
-    clients: (window.state && window.state.clients || []).map(c=>c.name),
-    updatedAt: window.state && window.state.__updatedAt
+/* ============================================================
+   KAIZEN LIVEOPS PRO · PERSISTENCIA REAL V7
+   Correccion clave:
+   - La app modifica la variable global `state`.
+   - Firebase estaba guardando `window.state`, que puede ser otro objeto.
+   - Este parche sincroniza `state` <-> `window.state`, guarda local al instante
+     y luego sube el mismo objeto real a Firestore.
+============================================================ */
+(function(){
+  const SYNC_KEYS = [
+    'kaizen-liveops-pro-v6',
+    'kaizen-liveops-pro-v5',
+    'kaizen-liveops-pro-v4-empresarial',
+    'kaizen-pro-v2-completo',
+    'kaizen-pro-v1'
+  ];
+  const FIRESTORE_COLLECTION = 'kaizen';
+  const FIRESTORE_DOC = 'state';
+  let syncReady = false;
+  let lastSnapshot = '';
+  let saving = false;
+
+  function safeClone(value){
+    try{return JSON.parse(JSON.stringify(value));}
+    catch(e){return value;}
+  }
+  function safeParse(value){
+    try{return JSON.parse(value);}catch(e){return null;}
+  }
+  function getRealState(){
+    try{
+      if(typeof state !== 'undefined' && state) return state;
+    }catch(e){}
+    return window.state || null;
+  }
+  function setRealState(next){
+    if(!next || typeof next !== 'object') return;
+    try{ state = next; }catch(e){}
+    window.state = next;
+  }
+  function getDoc(){
+    try{
+      if(!window.firebase) return null;
+      if(!firebase.apps.length && window.firebaseConfig) firebase.initializeApp(window.firebaseConfig);
+      return firebase.firestore().collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC);
+    }catch(e){
+      console.warn('Firebase no disponible:', e);
+      return null;
+    }
+  }
+  function stamp(st){
+    const real = st || getRealState();
+    if(real && typeof real === 'object') real.__updatedAt = Date.now();
+    return real;
+  }
+  function writeLocal(st){
+    if(!st) return;
+    const json = JSON.stringify(st);
+    SYNC_KEYS.forEach(k=>{ try{ localStorage.setItem(k, json); }catch(e){} });
+  }
+  function scoreState(st){
+    if(!st || typeof st !== 'object') return -1;
+    let score = 0;
+    score += Number(st.__updatedAt || 0) * 1000;
+    score += Array.isArray(st.clients) ? st.clients.length * 100 : 0;
+    score += Array.isArray(st.prospects) ? st.prospects.length * 30 : 0;
+    score += Array.isArray(st.tasks) ? st.tasks.length * 10 : 0;
+    score += Array.isArray(st.events) ? st.events.length * 5 : 0;
+    return score;
+  }
+  function bestLocalState(){
+    let best = null, bestScore = -1;
+    SYNC_KEYS.forEach(k=>{
+      const parsed = safeParse(localStorage.getItem(k) || 'null');
+      const s = scoreState(parsed);
+      if(parsed && s > bestScore){ best = parsed; bestScore = s; }
+    });
+    return best;
+  }
+  async function readFirebaseState(){
+    const doc = getDoc();
+    if(!doc) return null;
+    try{
+      const snap = await doc.get();
+      if(!snap.exists) return null;
+      const raw = snap.data() || {};
+      let parsed = typeof raw.data === 'string' ? safeParse(raw.data) : raw.data;
+      if(!parsed && raw.clients) parsed = raw;
+      if(parsed && !parsed.__updatedAt) parsed.__updatedAt = Number(raw.updatedAt || 1);
+      return parsed || null;
+    }catch(e){
+      console.warn('Firebase load error:', e);
+      return null;
+    }
+  }
+  function chooseState(firebaseState, localState){
+    if(firebaseState && localState){
+      const fu = Number(firebaseState.__updatedAt || 0);
+      const lu = Number(localState.__updatedAt || 0);
+      if(fu || lu) return lu >= fu ? localState : firebaseState;
+      return scoreState(localState) > scoreState(firebaseState) ? localState : firebaseState;
+    }
+    return firebaseState || localState || null;
+  }
+  function rerenderCurrent(){
+    try{
+      const page = localStorage.getItem('kaizen-last-page') || window.currentPage || 'dashboard';
+      if(typeof window.go === 'function') window.go(page);
+      else if(typeof window.renderPage === 'function') window.renderPage(page);
+      if(typeof window.updateBadges === 'function') window.updateBadges();
+    }catch(e){ console.warn('Render tras sincronizar falló:', e); }
+  }
+
+  async function saveNow(reason){
+    const real = stamp(getRealState());
+    if(!real || saving) return;
+    setRealState(real);
+    writeLocal(real);
+    lastSnapshot = JSON.stringify(real);
+
+    if(!syncReady && reason !== 'force' && reason !== 'manual') return;
+
+    const doc = getDoc();
+    if(!doc) return;
+    saving = true;
+    try{
+      await doc.set({ data: JSON.stringify(real), updatedAt: real.__updatedAt }, { merge:true });
+      console.log('✓ Firebase guardado ·', reason || 'sync', new Date(real.__updatedAt).toLocaleTimeString());
+    }catch(e){
+      console.warn('Firebase save error:', e);
+    }finally{
+      saving = false;
+    }
+  }
+
+  async function restoreFromBestSource(){
+    const firebaseState = await readFirebaseState();
+    const localState = bestLocalState();
+    const currentState = getRealState();
+    let chosen = chooseState(firebaseState, localState);
+
+    // Solo dejamos ganar el estado actual si ya tiene timestamp real.
+    if(currentState && Number(currentState.__updatedAt || 0) > Number((chosen && chosen.__updatedAt) || 0)){
+      chosen = currentState;
+    }
+
+    if(chosen){
+      setRealState(chosen);
+      writeLocal(chosen);
+      window._fbLoaded = true;
+      console.log('✓ Estado sincronizado', chosen.__updatedAt ? 'con timestamp' : 'sin timestamp');
+      rerenderCurrent();
+    }
+    syncReady = true;
+    window._fbAllowSave = true;
+    await saveNow('force');
+  }
+
+  // Firebase API usada por todos los parches anteriores.
+  window._fbLoad = readFirebaseState;
+  window._fbSave = function(_data, opts){
+    // Importante: ignoramos _data si viene de window.state viejo y guardamos el `state` real.
+    return saveNow(opts && opts.force ? 'force' : 'direct');
   };
-};
+  window.persist = function(){ return saveNow('persist'); };
+  window.kaizenForceSave = function(){ return saveNow('manual'); };
+  window.kaizenHardReloadFromFirebase = async function(){
+    const fb = await readFirebaseState();
+    if(fb){ setRealState(fb); writeLocal(fb); rerenderCurrent(); console.log('✓ Recargado desde Firebase'); }
+    return fb;
+  };
+  window.kaizenSyncStatus = function(){
+    const real = getRealState();
+    return {
+      syncReady,
+      firebaseReady: !!getDoc(),
+      lastPage: localStorage.getItem('kaizen-last-page') || 'dashboard',
+      clients: (real && real.clients || []).map(c=>c.name),
+      updatedAt: real && real.__updatedAt,
+      updatedAtHuman: real && real.__updatedAt ? new Date(real.__updatedAt).toLocaleString() : null
+    };
+  };
+
+  function wrapMutator(name){
+    const fn = window[name];
+    if(typeof fn !== 'function' || fn.__kaizenSyncWrapped) return;
+    const wrapped = function(){
+      const result = fn.apply(this, arguments);
+      setTimeout(()=>saveNow(name), 80);
+      return result;
+    };
+    wrapped.__kaizenSyncWrapped = true;
+    window[name] = wrapped;
+  }
+  function wrapAllMutators(){
+    [
+      'saveClient','deleteClient','saveProspect','moveProspect','deleteProspect',
+      'saveTask','changeTaskStatus','deleteTask','saveMember','deleteMember',
+      'saveEvent','saveReport','toggleOnboarding','saveGoalV5','savePackageV5',
+      'exportData','loginAdminV5','loginOperatorV5'
+    ].forEach(wrapMutator);
+
+    const go = window.go;
+    if(typeof go === 'function' && !go.__kaizenPageWrapped){
+      const wrappedGo = function(page){
+        try{ localStorage.setItem('kaizen-last-page', page || 'dashboard'); }catch(e){}
+        return go.apply(this, arguments);
+      };
+      wrappedGo.__kaizenPageWrapped = true;
+      window.go = wrappedGo;
+    }
+  }
+
+  wrapAllMutators();
+  setTimeout(wrapAllMutators, 600);
+  setTimeout(wrapAllMutators, 1600);
+
+  // Autosave real: si cualquier parte del HTML modifica `state`, se guarda aunque no llame persist().
+  setInterval(()=>{
+    if(!syncReady) return;
+    const real = getRealState();
+    if(!real) return;
+    let snap = '';
+    try{ snap = JSON.stringify(real); }catch(e){ return; }
+    if(snap !== lastSnapshot) saveNow('autosync');
+  }, 1200);
+
+  window.addEventListener('beforeunload', ()=>{
+    const real = stamp(getRealState());
+    if(real){ setRealState(real); writeLocal(real); }
+  });
+
+  restoreFromBestSource();
+})();
+</script>
+
+<script>
+/* Firebase sanity helper preserved by V7 patch. Use kaizenSyncStatus() in console. */
 </script>
 
 </body>
