@@ -6527,3 +6527,112 @@ function closeMobileDrawer(){
     }
   }
 </style>
+
+
+<!-- KAIZEN LEAP · FINAL OPERATIVE POLISH -->
+<style id="kaizen-worker-final-polish-style">
+.worker-admin-doc-hub{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:18px}
+.worker-admin-doc-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.worker-backbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.worker-backbar .btn{white-space:nowrap}
+.worker-doc-hint{font-size:12.5px;color:var(--sub);line-height:1.6;margin-top:8px}
+@media(max-width:640px){
+  .worker-backbar{align-items:flex-start}
+  .worker-admin-doc-tabs .btn{width:100%;justify-content:center}
+}
+</style>
+<script id="kaizen-worker-final-polish">
+(function(){
+  if(window.__kaizenWorkerFinalPolish) return;
+  window.__kaizenWorkerFinalPolish = true;
+
+  function $(s){return document.querySelector(s)}
+  function $$(s){return Array.from(document.querySelectorAll(s))}
+  function esc(s){return String(s==null?'':s).replace(/[&<>'"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]})}
+  function isAdmin(){try{return typeof window.isAdmin==='function' && window.isAdmin()}catch(e){return false}}
+  function today(){return new Date().toISOString().slice(0,10)}
+  var roleNames={brief:'Brief y parrilla',cronograma:'Cronograma',responsabilidades:'Responsabilidades',calendario:'Calendario',reportes:'Reportes'};
+  var workerNames={laura:'Presentadora de marcas',valentina:'Producción y postproducción',community:'Community Manager'};
+
+  // 1) Login: placeholders genéricos, sin mostrar usuarios como Laura/Valentina antes de escribir.
+  var originalSelectLogin = window.klSelectLogin;
+  window.klSelectLogin=function(target){
+    if(!originalSelectLogin) return;
+    originalSelectLogin(target);
+    var u=$('#klLoginUser'), p=$('#klLoginPass');
+    if(u){u.value='';u.setAttribute('placeholder', target==='admin'?'Usuario administrador':'Usuario');u.removeAttribute('value');}
+    if(p){p.value='';p.setAttribute('placeholder','Contraseña');p.removeAttribute('value');}
+    var info=$('#klLoginFormArea .notice.info .worker-access-note');
+    if(info && target!=='admin'){
+      var map={laura:'Área seleccionada: Presentadora de marcas. Ingresa con el usuario asignado a tu cuenta.',valentina:'Área seleccionada: Producción y postproducción. Ingresa con el usuario asignado a tu cuenta.',community:'Área seleccionada: Community Manager. Ingresa con el usuario asignado a tu cuenta.'};
+      info.textContent=map[target]||'Ingresa con el usuario asignado a tu cuenta operativa.';
+    }
+  };
+
+  // 2) Corregir navegación: desde Equipo & SOP los botones abren la sección real en Avance, no solo cambian el título.
+  window.selectWorkerSection=function(id,section){
+    try{sessionStorage.setItem('kaizen-admin-selected-worker-v1',id)}catch(e){}
+    $$('.page').forEach(function(p){p.classList.remove('active')});
+    var p=$('#page-avance'); if(p) p.classList.add('active');
+    window.currentPage='worker_'+section;
+    try{localStorage.setItem('kaizen-last-page','worker_'+section)}catch(e){}
+    var title=$('#topbarTitle'); if(title) title.textContent=roleNames[section]||'Worker OS';
+    if(typeof window.renderWorkerSection==='function') window.renderWorkerSection(id,section);
+    if(window.innerWidth<=768 && typeof closeSidebar==='function') closeSidebar();
+  };
+
+  // 3) Botón de volver dentro de cada sección operativa.
+  var originalRenderWorkerSection=window.renderWorkerSection;
+  window.renderWorkerSection=function(id,section){
+    if(originalRenderWorkerSection) originalRenderWorkerSection(id,section);
+    var target=$('#avance-content')||$('#dashboard-content');
+    if(!target || target.querySelector('.worker-backbar')) return;
+    var area=workerNames[id]||'Área operativa';
+    var label=roleNames[section]||'Sección';
+    target.insertAdjacentHTML('afterbegin','<div class="worker-backbar"><button class="btn ghost" onclick="renderWorkerPortal(\''+esc(id)+'\')">← Volver al panel</button><div><span class="tag accent">'+esc(area)+'</span> <span class="tag muted">'+esc(label)+'</span></div></div>');
+  };
+
+  // 4) Hub administrativo para anclar documentos a cada cuenta operativa.
+  function adminDocumentHub(){
+    var workers=['valentina','laura','community'];
+    var rows=workers.map(function(id){
+      var area=workerNames[id]||id;
+      return '<div class="worker-card-soft"><div class="split"><div><h3 style="margin-bottom:4px">'+esc(area)+'</h3><p class="worker-doc-hint">Asocia aquí el brief, cronograma, responsabilidades, calendario o reportes. Al guardar, ese contenido queda visible en la cuenta operativa correspondiente.</p></div><span class="tag accent">Cuenta operativa</span></div><div class="worker-admin-doc-tabs">'+
+        Object.keys(roleNames).map(function(sec){return '<button class="btn ghost sm" onclick="selectWorkerSection(\''+id+'\',\''+sec+'\')">'+esc(roleNames[sec])+'</button>'}).join('')+
+      '</div></div>'
+    }).join('');
+    return '<div class="worker-admin-doc-hub" id="workerAdminDocHub"><div class="card glow"><div class="card-header"><h3>Asignación de documentos operativos</h3><span class="tag gold">Admin</span></div><div class="notice info"><b>Uso recomendado:</b> cada lunes actualiza el brief, parrilla, cronograma o calendario desde estos accesos. Puedes pegar enlace externo, texto largo y marcar la fecha de actualización. El trabajador lo verá al entrar a su área.</div></div>'+rows+'</div>';
+  }
+
+  var originalRenderEquipo=window.renderEquipo;
+  window.renderEquipo=function(){
+    if(originalRenderEquipo) originalRenderEquipo();
+    if(!isAdmin()) return;
+    var el=$('#equipo-content') || $('#page-equipo');
+    if(el && !$('#workerAdminDocHub')){
+      el.insertAdjacentHTML('afterbegin', adminDocumentHub());
+    }
+  };
+
+  // 5) Limpieza de guías rápidas duplicadas en Producción: conserva una sola.
+  function dedupeProductionGuides(){
+    var root=$('#produccion-content'); if(!root) return;
+    var guides=$$('#produccion-content .notice').filter(function(n){return /Guía rápida|Guia rapida/i.test(n.textContent||'')});
+    guides.forEach(function(n,i){if(i>0)n.remove()});
+  }
+  var originalRenderProduccion=window.renderProduccion;
+  window.renderProduccion=function(){
+    if(originalRenderProduccion) originalRenderProduccion();
+    dedupeProductionGuides();
+  };
+
+  // 6) Refuerzo: cuando el admin vuelve al panel de trabajador, mantener la página de Avance activa.
+  var originalRenderWorkerPortal=window.renderWorkerPortal;
+  window.renderWorkerPortal=function(id){
+    $$('.page').forEach(function(p){p.classList.remove('active')});
+    var p=$('#page-avance'); if(p) p.classList.add('active');
+    if(originalRenderWorkerPortal) originalRenderWorkerPortal(id);
+    var title=$('#topbarTitle'); if(title) title.textContent=isAdmin()?'Panel operativo':'Mi área';
+  };
+})();
+</script>
