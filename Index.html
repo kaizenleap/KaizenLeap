@@ -958,13 +958,30 @@ nav::-webkit-scrollbar{display:none}
     try { const s = await _fbDOC.get(); if(s.exists) return JSON.parse(s.data().data); } catch(e) { console.warn("Firebase load error:", e); }
     return null;
   };
-  window.addEventListener("DOMContentLoaded", async () => {
+  // Save current page on navigation
+  window.addEventListener("load", async () => {
+    const lastPage = localStorage.getItem("kaizen-last-page") || "dashboard";
+    // Hook persist after ALL scripts have loaded
+    function hookFirebase() {
+      const _op = persist;
+      persist = function() { _op(); window._fbSave(window.state); };
+      window.persist = persist;
+      console.log("✓ Firebase hook activado");
+    }
+    hookFirebase();
+    setTimeout(hookFirebase, 500);
+    setTimeout(hookFirebase, 1500);
+
     const d = await window._fbLoad();
-    if(d) { window.state = d; console.log("✓ Datos cargados desde Firebase"); if(window.go) window.go("dashboard"); }
-    else { console.log("Sin datos en Firebase aún"); }
-    const _op = persist;
-    persist = function() { _op(); window._fbSave(window.state); };
-    console.log("✓ Firebase hook activado");
+    if(d) {
+      window.state = d;
+      console.log("✓ Datos cargados desde Firebase");
+      if(window.go) window.go(lastPage);
+      // Re-hook after loading data
+      hookFirebase();
+    } else {
+      console.log("Sin datos en Firebase aún");
+    }
   });
 </script>
 </head>
@@ -3042,6 +3059,7 @@ boot();
   }
 
   window.go=function(page){
+    try{localStorage.setItem("kaizen-last-page", page);}catch(e){}
     if(!isAdmin() && ['finanzas','simulador','equipo','flujo','admin','guia'].includes(page)){toast('Sección solo administrador');page='dashboard'}
     $$('.nav-item').forEach(n=>n.classList.remove('active'));
     document.querySelector(`[onclick="go('${page}')"]`)?.classList.add('active');
