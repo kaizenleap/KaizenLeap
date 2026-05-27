@@ -46,6 +46,14 @@
     } else {
       console.log('ℹ️ Sin datos en Firebase aún');
     }
+
+    // Override persist to also save to Firebase
+    const _origPersist = persist;
+    persist = function() {
+      _origPersist();
+      window._fbSave(window.state);
+    };
+    console.log('✓ Firebase hook activado');
   });
 </script>
 <meta charset="UTF-8"/>
@@ -1222,7 +1230,7 @@ const DEF = {
   settings:{autoResetWeekly:false,lastResetWeek:''}
 };
 let state = JSON.parse(localStorage.getItem('kaizen-pro-v1')||'null') || JSON.parse(JSON.stringify(DEF));
-const persist = () => {
+let persist = () => {
   localStorage.setItem('kaizen-pro-v1', JSON.stringify(state));
   console.log('persist called, _fbSave:', typeof window._fbSave);
   if(window._fbSave) {
