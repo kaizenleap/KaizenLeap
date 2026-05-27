@@ -6443,3 +6443,87 @@ function closeMobileDrawer(){
 
 </body>
 </html>
+<!-- KAIZEN LEAP · MOBILE LOGIN FIX · NO HORIZONTAL DRIFT -->
+<style id="kaizen-mobile-login-fixed-v1">
+  html,body{
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden!important;
+  }
+  #klWorkerLogin.kl-login-v6,
+  .kl-login-v6{
+    width:100vw!important;
+    max-width:100vw!important;
+    min-height:100dvh!important;
+    height:100dvh!important;
+    overflow-x:hidden!important;
+    overflow-y:auto!important;
+    overscroll-behavior-x:none!important;
+    touch-action:pan-y!important;
+    padding:12px!important;
+    display:flex!important;
+    align-items:center!important;
+    justify-content:center!important;
+  }
+  #klWorkerLogin .kl-auth-v6,
+  .kl-login-v6 .kl-auth-v6{
+    width:100%!important;
+    max-width:min(430px, calc(100vw - 24px))!important;
+    min-width:0!important;
+    max-height:calc(100dvh - 24px)!important;
+    overflow-x:hidden!important;
+    overflow-y:auto!important;
+    margin:0 auto!important;
+    box-sizing:border-box!important;
+  }
+  #klWorkerLogin .worker-auth-choice,
+  #klWorkerLogin .role-login-grid-kl,
+  #klWorkerLogin .worker-doc-panel{
+    width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+  }
+  #klWorkerLogin .role-login-card-kl,
+  #klWorkerLogin .worker-input,
+  #klWorkerLogin .field,
+  #klWorkerLogin .notice,
+  #klWorkerLogin .btn{
+    max-width:100%!important;
+    min-width:0!important;
+    box-sizing:border-box!important;
+    overflow-wrap:anywhere!important;
+  }
+  #klWorkerLogin .role-login-card-kl:hover{
+    transform:none!important;
+  }
+  #klWorkerLogin h1{
+    font-size:clamp(22px,7vw,30px)!important;
+    line-height:1.05!important;
+  }
+  @media(max-width:640px){
+    #klWorkerLogin.kl-login-v6,
+    .kl-login-v6{
+      padding:10px!important;
+      align-items:flex-start!important;
+      padding-top:max(14px, env(safe-area-inset-top, 0px))!important;
+      padding-bottom:max(14px, env(safe-area-inset-bottom, 0px))!important;
+    }
+    #klWorkerLogin .kl-auth-v6,
+    .kl-login-v6 .kl-auth-v6{
+      max-width:calc(100vw - 20px)!important;
+      max-height:calc(100dvh - 28px)!important;
+      padding:20px 14px!important;
+      border-radius:22px!important;
+    }
+    #klWorkerLogin .worker-auth-choice,
+    #klWorkerLogin .role-login-grid-kl,
+    .worker-auth-choice,
+    .role-login-grid-kl{
+      grid-template-columns:1fr!important;
+      gap:10px!important;
+    }
+    #klWorkerLogin .role-login-card-kl{
+      padding:13px!important;
+    }
+  }
+</style>
