@@ -1665,7 +1665,8 @@ body::before {
     'kaizen-liveops-pro-v6-control-total',
     'kaizen-liveops-pro-v7',
     'kaizen-liveops-pro-v8',
-    'kaizen-liveops-pro-v9-single-source'
+    'kaizen-liveops-pro-v9-single-source',
+    'kaizen-liveops-pro-v10-authoritative'
   ];
 
   window.__kaizenStateKeysV9 = STATE_KEYS.slice();
@@ -1895,128 +1896,6 @@ body::before {
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
-<script>
-/* ─────────────────────────────────────────────────────────────
-   FIREBASE FIX · fuente única de datos y protección anti-reset
-   - Bloquea guardados de arranque para que los defaults no borren Firestore.
-   - Sincroniza todas las llaves históricas de localStorage.
-   - Conserva la última página abierta.
-───────────────────────────────────────────────────────────── */
-(function(){
-  const firebaseConfig = {
-    apiKey: "AIzaSyCdFXfoCBEZCT2tyRUHRJZT5tYbq8CHWWQ",
-    authDomain: "kaizenlive.firebaseapp.com",
-    projectId: "kaizenlive",
-    storageBucket: "kaizenlive.firebasestorage.app",
-    messagingSenderId: "659479963267",
-    appId: "1:659479963267:web:42e3bc0885ebfce7335db6"
-  };
-
-  if(!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-
-  const FB_STATE_KEYS = [
-    'kaizen-pro-v1',
-    'kaizen-pro-v2-completo',
-    'kaizen-liveops-pro-v4-empresarial',
-    'kaizen-liveops-pro-v5-control-total',
-    'kaizen-liveops-pro-v6-control-total'
-  ];
-
-  const _fbDB = firebase.firestore();
-  const _fbDOC = _fbDB.collection('kaizen').doc('state');
-  let _fbTimer = null;
-  window._fbAllowSave = false;
-
-  function safeParse(v){ try{return JSON.parse(v)}catch(e){return null} }
-  function cleanClone(o){ try{return JSON.parse(JSON.stringify(o))}catch(e){return o} }
-  function stateScore(s){
-    if(!s || typeof s !== 'object') return 0;
-    return JSON.stringify(s).length
-      + ((s.clients||[]).length*1200)
-      + ((s.prospects||[]).length*700)
-      + ((s.tasks||[]).length*400)
-      + ((s.reports||[]).length*900)
-      + ((s.events||[]).length*250);
-  }
-  function getBestLocalState(){
-    let best = null, bestScore = -1;
-    FB_STATE_KEYS.forEach(k=>{
-      const data = safeParse(localStorage.getItem(k));
-      const score = stateScore(data);
-      if(data && score > bestScore){ best = data; bestScore = score; }
-    });
-    return best;
-  }
-  function chooseState(firebaseState, localState){
-    if(firebaseState && localState){
-      const fu = Number(firebaseState.__updatedAt || 0);
-      const lu = Number(localState.__updatedAt || 0);
-      if(fu || lu) return lu >= fu ? localState : firebaseState;
-      // Para la primera corrección: si no hay timestamps, protegemos lo editado en este navegador.
-      return localState;
-    }
-    return firebaseState || localState || null;
-  }
-  function stamp(data){
-    const copy = cleanClone(data || {});
-    if(copy && typeof copy === 'object') copy.__updatedAt = Date.now();
-    return copy;
-  }
-  function writeLocalEverywhere(data){
-    FB_STATE_KEYS.forEach(k=>{ try{ localStorage.setItem(k, JSON.stringify(data)); }catch(e){} });
-  }
-
-  window._fbSave = async function(data, opts){
-    if(!data) return;
-    if(!window._fbAllowSave && !(opts && opts.force)){
-      return;
-    }
-    clearTimeout(_fbTimer);
-    _fbTimer = setTimeout(async ()=>{
-      const payload = stamp(data);
-      try{
-        writeLocalEverywhere(payload);
-        await _fbDOC.set({ data: JSON.stringify(payload), updatedAt: payload.__updatedAt }, { merge:true });
-        console.log('✓ Firebase guardado');
-      }catch(e){ console.warn('Firebase save error:', e); }
-    }, 250);
-  };
-
-  window._fbLoad = async function(){
-    try{
-      const snap = await _fbDOC.get();
-      if(!snap.exists) return null;
-      const raw = snap.data() || {};
-      const parsed = typeof raw.data === 'string' ? safeParse(raw.data) : raw.data;
-      if(parsed && raw.updatedAt && !parsed.__updatedAt) parsed.__updatedAt = raw.updatedAt;
-      return parsed || null;
-    }catch(e){
-      console.warn('Firebase load error:', e);
-      return null;
-    }
-  };
-
-  window.addEventListener('load', async ()=>{
-    const lastPage = localStorage.getItem('kaizen-last-page') || 'dashboard';
-    await new Promise(r=>setTimeout(r, 300));
-
-    const firebaseState = await window._fbLoad();
-    const localState = getBestLocalState();
-    const chosen = chooseState(firebaseState, localState);
-
-    if(chosen){
-      window._fbLoaded = true;
-      window.state = chosen;
-      writeLocalEverywhere(chosen);
-      console.log('✓ Estado restaurado', chosen.__updatedAt ? 'con timestamp' : 'sin timestamp');
-    }
-
-    window._fbAllowSave = true;
-    if(window.state) window._fbSave(window.state, {force:true});
-    if(window.go) setTimeout(()=>window.go(lastPage), 50);
-  });
-})();
-</script>
 </head>
 <body>
 
@@ -5527,320 +5406,6 @@ boot();
 
 
 <script>
-/* ============================================================
-   KAIZEN LIVEOPS PRO · PERSISTENCIA REAL V7
-   Correccion clave:
-   - La app modifica la variable global `state`.
-   - Firebase estaba guardando `window.state`, que puede ser otro objeto.
-   - Este parche sincroniza `state` <-> `window.state`, guarda local al instante
-     y luego sube el mismo objeto real a Firestore.
-============================================================ */
-(function(){
-  const SYNC_KEYS = [
-    'kaizen-liveops-pro-v6',
-    'kaizen-liveops-pro-v5',
-    'kaizen-liveops-pro-v4-empresarial',
-    'kaizen-pro-v2-completo',
-    'kaizen-pro-v1'
-  ];
-  const FIRESTORE_COLLECTION = 'kaizen';
-  const FIRESTORE_DOC = 'state';
-  let syncReady = false;
-  let lastSnapshot = '';
-  let saving = false;
-
-  function safeClone(value){
-    try{return JSON.parse(JSON.stringify(value));}
-    catch(e){return value;}
-  }
-  function safeParse(value){
-    try{return JSON.parse(value);}catch(e){return null;}
-  }
-  function getRealState(){
-    try{
-      if(typeof state !== 'undefined' && state) return state;
-    }catch(e){}
-    return window.state || null;
-  }
-  function setRealState(next){
-    if(!next || typeof next !== 'object') return;
-    try{ state = next; }catch(e){}
-    window.state = next;
-  }
-  function getDoc(){
-    try{
-      if(!window.firebase) return null;
-      if(!firebase.apps.length && window.firebaseConfig) firebase.initializeApp(window.firebaseConfig);
-      return firebase.firestore().collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC);
-    }catch(e){
-      console.warn('Firebase no disponible:', e);
-      return null;
-    }
-  }
-  function stamp(st){
-    const real = st || getRealState();
-    if(real && typeof real === 'object') real.__updatedAt = Date.now();
-    return real;
-  }
-  function writeLocal(st){
-    if(!st) return;
-    const json = JSON.stringify(st);
-    SYNC_KEYS.forEach(k=>{ try{ localStorage.setItem(k, json); }catch(e){} });
-  }
-  function scoreState(st){
-    if(!st || typeof st !== 'object') return -1;
-    let score = 0;
-    score += Number(st.__updatedAt || 0) * 1000;
-    score += Array.isArray(st.clients) ? st.clients.length * 100 : 0;
-    score += Array.isArray(st.prospects) ? st.prospects.length * 30 : 0;
-    score += Array.isArray(st.tasks) ? st.tasks.length * 10 : 0;
-    score += Array.isArray(st.events) ? st.events.length * 5 : 0;
-    return score;
-  }
-  function bestLocalState(){
-    let best = null, bestScore = -1;
-    SYNC_KEYS.forEach(k=>{
-      const parsed = safeParse(localStorage.getItem(k) || 'null');
-      const s = scoreState(parsed);
-      if(parsed && s > bestScore){ best = parsed; bestScore = s; }
-    });
-    return best;
-  }
-  async function readFirebaseState(){
-    const doc = getDoc();
-    if(!doc) return null;
-    try{
-      const snap = await doc.get();
-      if(!snap.exists) return null;
-      const raw = snap.data() || {};
-      let parsed = typeof raw.data === 'string' ? safeParse(raw.data) : raw.data;
-      if(!parsed && raw.clients) parsed = raw;
-      if(parsed && !parsed.__updatedAt) parsed.__updatedAt = Number(raw.updatedAt || 1);
-      return parsed || null;
-    }catch(e){
-      console.warn('Firebase load error:', e);
-      return null;
-    }
-  }
-  function chooseState(firebaseState, localState){
-    if(firebaseState && localState){
-      const fu = Number(firebaseState.__updatedAt || 0);
-      const lu = Number(localState.__updatedAt || 0);
-      // Firebase siempre gana si tiene timestamp válido y es >= local
-      // Margen de 5s para evitar que race conditions locales sobreescriban Firebase
-      if(fu && lu) return fu >= lu - 5000 ? firebaseState : localState;
-      if(fu) return firebaseState;
-      if(lu) return localState;
-      return scoreState(firebaseState) >= scoreState(localState) ? firebaseState : localState;
-    }
-    return firebaseState || localState || null;
-  }
-  function rerenderCurrent(){
-    try{
-      const page = window.__kaizenDesiredPage || localStorage.getItem('kaizen-last-page') || window.currentPage || 'dashboard';
-      if(typeof window.go === 'function') window.go(page);
-      else if(typeof window.renderPage === 'function') window.renderPage(page);
-      if(typeof window.updateBadges === 'function') window.updateBadges();
-    }catch(e){ console.warn('Render tras sincronizar falló:', e); }
-  }
-
-  async function saveNow(reason){
-    let real = stamp(getRealState());
-    if(!real || saving) return;
-    real = sanitizeSuperClients(real);
-    setRealState(real);
-    writeLocal(real);
-    lastSnapshot = JSON.stringify(real);
-
-    // Si Firebase no está disponible, marcamos syncReady de todas formas
-    // para que el guardado local siempre funcione
-    if(!getDoc()){
-      syncReady = true;
-      window._fbAllowSave = true;
-      return;
-    }
-
-    if(!syncReady && reason !== 'force' && reason !== 'manual') return;
-
-    const doc = getDoc();
-    if(!doc) return;
-    saving = true;
-    try{
-      await doc.set({ data: JSON.stringify(real), updatedAt: real.__updatedAt }, { merge:true });
-      console.log('✓ Firebase guardado ·', reason || 'sync', new Date(real.__updatedAt).toLocaleTimeString());
-    }catch(e){
-      console.warn('Firebase save error:', e);
-    }finally{
-      saving = false;
-    }
-  }
-
-  // Sanitiza el cliente "super" en cualquier estado antes de aplicarlo.
-  // Garantiza que los datos guardados (nombre, paquete, notas, etc.) nunca sean
-  // pisados por los defaults hardcodeados, sin importar si el estado viene de
-  // Firebase, localStorage o memoria.
-  function sanitizeSuperClients(st){
-    if(!st || !Array.isArray(st.clients)) return st;
-    // Buscar definiciones SUPER conocidas en el scope global
-    const supers = [];
-    try{ if(typeof SUPERPIZZA!=='undefined') supers.push(SUPERPIZZA); }catch(e){}
-    try{ if(typeof SUPER!=='undefined') supers.push(SUPER); }catch(e){}
-    supers.forEach(function(DEF){
-      const sp = st.clients.find(c=> c.id===DEF.id || (c.name||'').toLowerCase().includes('super'));
-      if(!sp) return;
-      const defaults = JSON.parse(JSON.stringify(DEF));
-      const id = sp.id || DEF.id;
-      const onboarding = Object.assign({}, defaults.onboarding, sp.onboarding||{});
-      // Solo rellena campos vacíos/nulos; NUNCA sobreescribe lo que el usuario editó
-      Object.keys(defaults).forEach(function(k){
-        if(sp[k]===undefined||sp[k]===null||sp[k]==='') sp[k]=defaults[k];
-      });
-      sp.id = id;
-      sp.onboarding = onboarding;
-    });
-    return st;
-  }
-
-  async function restoreFromBestSource(){
-    const firebaseState = await readFirebaseState();
-    let localState = bestLocalState();
-    const currentState = getRealState();
-    const bootStartedAt = Number(window.__kaizenBootStartedAt || 0);
-
-    // Si Firebase tiene datos válidos, no necesitamos el localState para la comparación.
-    // La función chooseState ya prioriza Firebase. Solo anulamos localState si Firebase
-    // tiene un timestamp más reciente que el localState (ya lo maneja chooseState).
-    // No anulamos localState basado en bootStartedAt: eso causaba pérdida de datos.
-
-    let chosen = chooseState(firebaseState, localState);
-
-    // Solo dejamos ganar el estado actual si ya venía de antes del arranque.
-    const currentUpdatedAt = Number((currentState && currentState.__updatedAt) || 0);
-    if(currentState && currentUpdatedAt > Number((chosen && chosen.__updatedAt) || 0) && (!bootStartedAt || currentUpdatedAt < bootStartedAt)){
-      chosen = currentState;
-    }
-
-    if(chosen){
-      chosen = sanitizeSuperClients(chosen);
-      setRealState(chosen);
-      writeLocal(chosen);
-      window._fbLoaded = true;
-      console.log('✓ Estado sincronizado', chosen.__updatedAt ? 'con timestamp' : 'sin timestamp');
-      rerenderCurrent();
-    }
-    syncReady = true;
-    window._fbAllowSave = true;
-    await saveNow('force');
-  }
-
-  // Firebase API usada por todos los parches anteriores.
-  window._fbLoad = readFirebaseState;
-  window._fbSave = function(_data, opts){
-    // Importante: ignoramos _data si viene de window.state viejo y guardamos el `state` real.
-    return saveNow(opts && opts.force ? 'force' : 'direct');
-  };
-  window.persist = function(){ return saveNow('persist'); };
-  window.kaizenForceSave = function(){ return saveNow('manual'); };
-  window.kaizenHardReloadFromFirebase = async function(){
-    const fb = await readFirebaseState();
-    if(fb){ setRealState(fb); writeLocal(fb); rerenderCurrent(); console.log('✓ Recargado desde Firebase'); }
-    return fb;
-  };
-  window.kaizenSyncStatus = function(){
-    const real = getRealState();
-    return {
-      syncReady,
-      firebaseReady: !!getDoc(),
-      lastPage: localStorage.getItem('kaizen-last-page') || 'dashboard',
-      clients: (real && real.clients || []).map(c=>c.name),
-      updatedAt: real && real.__updatedAt,
-      updatedAtHuman: real && real.__updatedAt ? new Date(real.__updatedAt).toLocaleString() : null
-    };
-  };
-
-  function wrapMutator(name){
-    const fn = window[name];
-    if(typeof fn !== 'function' || fn.__kaizenSyncWrapped) return;
-    const wrapped = function(){
-      const result = fn.apply(this, arguments);
-      setTimeout(()=>saveNow(name), 80);
-      return result;
-    };
-    wrapped.__kaizenSyncWrapped = true;
-    window[name] = wrapped;
-  }
-  // Expose member helpers globally so inline onclick works
-  window.openMemberModal = window.openMemberModal || (typeof openMemberModal!=='undefined'?openMemberModal:null);
-  window.previewMemberPhoto = window.previewMemberPhoto || (typeof previewMemberPhoto!=='undefined'?previewMemberPhoto:null);
-
-  function wrapAllMutators(){
-    [
-      'saveClient','deleteClient','saveProspect','moveProspect','deleteProspect',
-      'saveTask','changeTaskStatus','deleteTask','saveMember','deleteMember',
-      'openMemberModal','previewMemberPhoto',
-      'saveEvent','saveReport','toggleOnboarding','saveGoalV5','savePackageV5',
-      'exportData','loginAdminV5','loginOperatorV5'
-    ].forEach(fn=>{
-      if(typeof window[fn]==='function' && !window[fn].__kaizenSyncWrapped){
-        const orig=window[fn];
-        window[fn]=function(){
-          const result=orig.apply(this,arguments);
-          setTimeout(()=>saveNow(fn), 80);
-          return result;
-        };
-        window[fn].__kaizenSyncWrapped=true;
-      }
-    });
-
-    const go = window.go;
-    if(typeof go === 'function' && !go.__kaizenPageWrapped){
-      const wrappedGo = function(page){
-        try{ localStorage.setItem('kaizen-last-page', page || 'dashboard'); }catch(e){}
-        return go.apply(this, arguments);
-      };
-      wrappedGo.__kaizenPageWrapped = true;
-      window.go = wrappedGo;
-    }
-  }
-
-  wrapAllMutators();
-  setTimeout(wrapAllMutators, 600);
-  setTimeout(wrapAllMutators, 1600);
-
-  // Autosave real: flag dirty evita serializar en cada tick cuando no hay cambios.
-  let _dirtyFlag = false;
-  setInterval(()=>{
-    if(!syncReady) return;
-    const real = getRealState();
-    if(!real) return;
-    let snap = '';
-    try{ snap = JSON.stringify(real); }catch(e){ return; }
-    if(snap !== lastSnapshot) _dirtyFlag = true;
-    if(_dirtyFlag){ _dirtyFlag = false; saveNow('autosync'); }
-  }, 2000);
-
-  window.addEventListener('beforeunload', ()=>{
-    const real = stamp(getRealState());
-    if(real){ setRealState(real); writeLocal(real); }
-  });
-
-  restoreFromBestSource()
-    .catch(e=>console.warn('Sync inicial falló:', e))
-    .finally(()=>{
-      document.documentElement.classList.remove('kaizen-syncing');
-      window.__kaizenDesiredPage = localStorage.getItem('kaizen-last-page') || window.__kaizenDesiredPage || 'dashboard';
-      // Trigger cinematic splash exit
-      if(typeof window.__splashFinish === 'function') window.__splashFinish();
-    });
-})();
-</script>
-
-<script>
-/* Firebase sanity helper preserved by V7 patch. Use kaizenSyncStatus() in console. */
-</script>
-
-
-<script>
 /* ── TOPBAR DROPDOWN MÓVIL ── */
 function toggleTopbarMenu(){
   const dd = document.getElementById('topbarDropdown');
@@ -5926,13 +5491,24 @@ function closeMobileDrawer(){
 </script>
 
 
-<script id="kaizen-persistence-v9-single-source">
-(function(){
-  if(window.__kaizenPersistenceV9Loaded) return;
-  window.__kaizenPersistenceV9Loaded = true;
 
-  var VERSION = 'v9-single-source-2026-05-27';
-  var STATE_KEYS = window.__kaizenStateKeysV9 || [
+<script id="kaizen-persistence-v10-authoritative">
+(function(){
+  if(window.__kaizenPersistenceV10Loaded) return;
+  window.__kaizenPersistenceV10Loaded = true;
+
+  var VERSION = 'v10-authoritative-2026-05-27';
+  var FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyCdFXfoCBEZCT2tyRUHRJZT5tYbq8CHWWQ',
+    authDomain: 'kaizenlive.firebaseapp.com',
+    projectId: 'kaizenlive',
+    storageBucket: 'kaizenlive.firebasestorage.app',
+    messagingSenderId: '659479963267',
+    appId: '1:659479963267:web:42e3bc0885ebfce7335db6'
+  };
+  var FIRESTORE_COLLECTION = 'kaizen';
+  var FIRESTORE_DOC = 'state';
+  var STATE_KEYS = (window.__kaizenStateKeysV9 || [
     'kaizen-pro-v1',
     'kaizen-pro-v2-completo',
     'kaizen-liveops-pro-v4-empresarial',
@@ -5942,45 +5518,39 @@ function closeMobileDrawer(){
     'kaizen-liveops-pro-v6-control-total',
     'kaizen-liveops-pro-v7',
     'kaizen-liveops-pro-v8',
-    'kaizen-liveops-pro-v9-single-source'
-  ];
+    'kaizen-liveops-pro-v9-single-source',
+    'kaizen-liveops-pro-v10-authoritative'
+  ]).slice();
+  if(STATE_KEYS.indexOf('kaizen-liveops-pro-v10-authoritative') === -1) STATE_KEYS.push('kaizen-liveops-pro-v10-authoritative');
 
-  var FIREBASE_CONFIG = {
-    apiKey: 'AIzaSyCdFXfoCBEZCT2tyRUHRJZT5tYbq8CHWWQ',
-    authDomain: 'kaizenlive.firebaseapp.com',
-    projectId: 'kaizenlive',
-    storageBucket: 'kaizenlive.firebasestorage.app',
-    messagingSenderId: '659479963267',
-    appId: '1:659479963267:web:42e3bc0885ebfce7335db6'
-  };
-
-  var FIRESTORE_COLLECTION = 'kaizen';
-  var FIRESTORE_DOC = 'state';
+  var nativeSet = window.__kaizenNativeSetItemV9 || Storage.prototype.setItem;
   var restoreDone = false;
   var firebaseChecked = false;
-  var userChangedAfterRestore = false;
+  var restoredSource = null;
   var savingFirebase = false;
   var saveTimer = null;
-  var watchTimer = null;
   var lastSnapshot = '';
+  var userDirty = false;
+  var writeGateInstalled = false;
 
-  function safeParse(value){
-    try { return JSON.parse(value); } catch(e) { return null; }
-  }
+  var DEFAULT_PACKAGES = {
+    'Promo Confianza': {price:950000,sessions:4,presentadora:200000,editora:475000,grabacion:0,cm:0,transporte:0,otros:0},
+    'Presencia': {price:2000000,sessions:4,presentadora:360000,editora:500000,grabacion:300000,cm:0,transporte:50000,otros:0},
+    'Expansion': {price:3500000,sessions:6,presentadora:600000,editora:850000,grabacion:450000,cm:150000,transporte:70000,otros:0},
+    'Expansión': {price:3500000,sessions:6,presentadora:600000,editora:850000,grabacion:450000,cm:150000,transporte:70000,otros:0},
+    'Influencia': {price:6000000,sessions:8,presentadora:960000,editora:1200000,grabacion:700000,cm:400000,transporte:100000,otros:0}
+  };
 
-  function safeClone(value){
-    try { return JSON.parse(JSON.stringify(value)); } catch(e) { return value; }
-  }
-
-  function isObject(value){
-    return !!value && typeof value === 'object' && !Array.isArray(value);
-  }
+  function isObject(v){ return !!v && typeof v === 'object' && !Array.isArray(v); }
+  function safeParse(v){ try { return JSON.parse(v); } catch(e) { return null; } }
+  function safeClone(v){ try { return JSON.parse(JSON.stringify(v)); } catch(e) { return v; } }
+  function now(){ return Date.now(); }
+  function isStateKey(k){ return STATE_KEYS.indexOf(String(k)) !== -1; }
+  function jsonOf(v){ try { return JSON.stringify(v); } catch(e) { return ''; } }
 
   function getRealState(){
-    try {
-      if(typeof state !== 'undefined' && state) return state;
-    } catch(e) {}
-    return window.state || null;
+    try { if(typeof state !== 'undefined' && state && typeof state === 'object') return state; } catch(e) {}
+    return window.state && typeof window.state === 'object' ? window.state : null;
   }
 
   function setRealState(next){
@@ -5989,92 +5559,27 @@ function closeMobileDrawer(){
     window.state = next;
   }
 
-  function ensureArray(obj, key){
-    if(!Array.isArray(obj[key])) obj[key] = [];
-  }
-
-  function normalizeState(input){
-    if(!isObject(input)) return null;
-    var st = input;
-    ensureArray(st, 'clients');
-    ensureArray(st, 'prospects');
-    ensureArray(st, 'tasks');
-    ensureArray(st, 'members');
-    ensureArray(st, 'events');
-    ensureArray(st, 'reports');
-    if(!isObject(st.checks)) st.checks = {};
-    if(!isObject(st.settings)) st.settings = {};
-    if(!isObject(st.packages)) st.packages = {};
-    if(!isObject(st.catalog)) st.catalog = {};
-    if(!isObject(st.personal)) st.personal = {};
-    if(!isObject(st.goals)) st.goals = {};
-    if(!isObject(st.caseStudy)) st.caseStudy = {};
-    return st;
-  }
-
-  function itemKey(item){
-    if(!item || typeof item !== 'object') return '';
-    return String(item.id || item.name || item.title || '');
-  }
-
-  function mergeArrayByIdentity(target, fallback){
-    if(!Array.isArray(target)) target = [];
-    if(!Array.isArray(fallback)) return target;
-    var seen = {};
-    target.forEach(function(item){ var k = itemKey(item); if(k) seen[k] = true; });
-    fallback.forEach(function(item){
-      var k = itemKey(item);
-      if(k && !seen[k]){
-        target.push(safeClone(item));
-        seen[k] = true;
-      }
-    });
-    return target;
-  }
-
-  function fillEmptyFields(target, fallback){
-    if(!isObject(target) || !isObject(fallback)) return target;
-    Object.keys(fallback).forEach(function(key){
-      if(target[key] === undefined || target[key] === null || target[key] === ''){
-        target[key] = safeClone(fallback[key]);
-      } else if(isObject(target[key]) && isObject(fallback[key])){
-        fillEmptyFields(target[key], fallback[key]);
-      }
-    });
-    return target;
-  }
-
-  function mergeRuntimeDefaults(chosen, runtime){
-    chosen = normalizeState(chosen) || {};
-    runtime = normalizeState(runtime) || {};
-
-    chosen.packages = Object.assign({}, runtime.packages || {}, chosen.packages || {});
-    chosen.catalog = Object.assign({}, runtime.catalog || {}, chosen.catalog || {});
-    chosen.settings = Object.assign({}, runtime.settings || {}, chosen.settings || {});
-    chosen.personal = Object.assign({}, runtime.personal || {}, chosen.personal || {});
-    chosen.goals = Object.assign({}, runtime.goals || {}, chosen.goals || {});
-    chosen.caseStudy = Object.assign({}, runtime.caseStudy || {}, chosen.caseStudy || {});
-
-    chosen.members = mergeArrayByIdentity(chosen.members, runtime.members);
-    chosen.events = mergeArrayByIdentity(chosen.events, runtime.events);
-
-    // Keep user-created tasks/prospects/clients intact. Only add default clients if the saved state has none.
-    if((chosen.clients || []).length === 0 && (runtime.clients || []).length){
-      chosen.clients = safeClone(runtime.clients);
-    }
-
-    // Protect edited Super/Superpizza data while still filling blank fields from bundled defaults.
-    var runtimeSupers = (runtime.clients || []).filter(function(c){
-      return c && String(c.name || '').toLowerCase().indexOf('super') !== -1;
-    });
-    runtimeSupers.forEach(function(def){
-      var existing = (chosen.clients || []).find(function(c){
-        return c && (c.id === def.id || String(c.name || '').toLowerCase().indexOf('super') !== -1);
-      });
-      if(existing) fillEmptyFields(existing, def);
-    });
-
-    return normalizeState(chosen);
+  function normalizeState(st){
+    if(!isObject(st)) return null;
+    var x = safeClone(st) || {};
+    x.clients = Array.isArray(x.clients) ? x.clients : [];
+    x.prospects = Array.isArray(x.prospects) ? x.prospects : [];
+    x.tasks = Array.isArray(x.tasks) ? x.tasks : [];
+    x.members = Array.isArray(x.members) ? x.members : [];
+    x.events = Array.isArray(x.events) ? x.events : [];
+    x.reports = Array.isArray(x.reports) ? x.reports : [];
+    x.checks = isObject(x.checks) ? x.checks : {};
+    x.settings = isObject(x.settings) ? x.settings : {};
+    x.personal = isObject(x.personal) ? x.personal : {goal:8000000,hours:40,tasks:[]};
+    x.caseStudy = isObject(x.caseStudy) ? x.caseStudy : {};
+    x.goals = isObject(x.goals) ? x.goals : (x.goals || {});
+    x.packages = Object.assign({}, DEFAULT_PACKAGES, isObject(x.packages) ? x.packages : {});
+    x.catalog = isObject(x.catalog) ? x.catalog : (x.catalog || {});
+    if(x.packages.Escencial) delete x.packages.Escencial;
+    if(x.packages.Essential) delete x.packages.Essential;
+    var t = Number(x.__updatedAt || x.updatedAt || 0);
+    if(t) x.__updatedAt = t;
+    return x;
   }
 
   function contentScore(st){
@@ -6082,87 +5587,65 @@ function closeMobileDrawer(){
     var score = 0;
     score += Array.isArray(st.clients) ? st.clients.length * 100000 : 0;
     score += Array.isArray(st.prospects) ? st.prospects.length * 25000 : 0;
-    score += Array.isArray(st.tasks) ? st.tasks.length * 12000 : 0;
+    score += Array.isArray(st.tasks) ? st.tasks.length * 10000 : 0;
     score += Array.isArray(st.events) ? st.events.length * 4000 : 0;
     score += Array.isArray(st.reports) ? st.reports.length * 50000 : 0;
-    try { score += JSON.stringify(st).length; } catch(e) {}
+    score += jsonOf(st).length;
     return score;
   }
 
   function makeCandidate(source, data){
-    var cloned = normalizeState(safeClone(data));
-    if(!cloned) return null;
-
-    var updatedAt = Number(cloned.__updatedAt || cloned.updatedAt || 0);
-    if(updatedAt && !cloned.__updatedAt) cloned.__updatedAt = updatedAt;
-
+    var st = normalizeState(data);
+    if(!st) return null;
+    var updatedAt = Number(st.__updatedAt || 0);
     var bootStartedAt = Number(window.__kaizenBootStartedAt || 0);
-    var startupCurrentPenalty = 0;
-    if(source === 'current' && updatedAt && bootStartedAt && updatedAt >= bootStartedAt){
-      startupCurrentPenalty = -9000000000000000000;
-    }
-
+    var startupPenalty = 0;
+    if(source === 'current' && updatedAt && bootStartedAt && updatedAt >= bootStartedAt) startupPenalty = -1e20;
     return {
       source: source,
-      state: cloned,
+      state: st,
       updatedAt: updatedAt,
-      score: (updatedAt ? updatedAt * 1000 : 0) + contentScore(cloned) + startupCurrentPenalty
+      content: contentScore(st),
+      score: (updatedAt ? updatedAt * 1000 : 0) + contentScore(st) + startupPenalty
     };
+  }
+
+  function readLocalCandidates(){
+    var out = [];
+    STATE_KEYS.forEach(function(k){
+      var parsed = safeParse(localStorage.getItem(k) || 'null');
+      var c = makeCandidate('local:' + k, parsed);
+      if(c) out.push(c);
+    });
+    return out;
   }
 
   function chooseBest(candidates){
     var valid = candidates.filter(Boolean);
     if(!valid.length) return null;
-
-    valid.sort(function(a, b){
-      if(a.updatedAt && b.updatedAt && a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt;
-      return b.score - a.score;
+    valid.sort(function(a,b){
+      var at = Number(a.updatedAt || 0), bt = Number(b.updatedAt || 0);
+      if(at && bt && at !== bt) return bt - at;
+      if(!!bt !== !!at) return bt ? 1 : -1;
+      return b.content - a.content;
     });
-
-    var nonCurrent = valid.filter(function(c){ return c.source !== 'current'; });
-    if(nonCurrent.length){
-      nonCurrent.sort(function(a, b){
-        if(a.updatedAt && b.updatedAt && a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt;
-        return b.score - a.score;
+    var fb = valid.find(function(c){ return c.source === 'firebase'; });
+    if(fb && fb.updatedAt){
+      var newerLocal = valid.find(function(c){
+        return c.source.indexOf('local:') === 0 && Number(c.updatedAt || 0) > fb.updatedAt + 1500;
       });
-      return nonCurrent[0];
+      return newerLocal || fb;
     }
-
     return valid[0];
-  }
-
-  function readLocalCandidates(){
-    var list = [];
-    STATE_KEYS.forEach(function(key){
-      var parsed = safeParse(localStorage.getItem(key) || 'null');
-      var c = makeCandidate('local:' + key, parsed);
-      if(c) list.push(c);
-    });
-    return list;
-  }
-
-  function nativeSetItem(key, value){
-    var nativeSet = window.__kaizenNativeSetItemV9;
-    if(nativeSet) return nativeSet.call(localStorage, key, value);
-    return localStorage.setItem(key, value);
-  }
-
-  function writeLocal(st){
-    if(!isObject(st)) return;
-    var json = JSON.stringify(st);
-    STATE_KEYS.forEach(function(key){
-      try { nativeSetItem(key, json); } catch(e) {}
-    });
-    lastSnapshot = json;
   }
 
   function getFirebaseDoc(){
     try {
-      if(!window.firebase || !window.firebase.firestore) return null;
+      if(!window.firebase || !firebase.firestore) return null;
       if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
       return firebase.firestore().collection(FIRESTORE_COLLECTION).doc(FIRESTORE_DOC);
     } catch(e) {
-      console.warn('Firebase no disponible:', e);
+      console.warn('Kaizen V10: Firebase unavailable', e);
       return null;
     }
   }
@@ -6175,56 +5658,64 @@ function closeMobileDrawer(){
       if(!snap.exists) return null;
       var raw = snap.data() || {};
       var parsed = typeof raw.data === 'string' ? safeParse(raw.data) : raw.data;
-      if(!parsed && raw.clients) parsed = raw;
+      parsed = normalizeState(parsed || null);
       if(parsed && raw.updatedAt && !parsed.__updatedAt) parsed.__updatedAt = Number(raw.updatedAt);
-      return parsed || null;
+      return parsed;
     } catch(e) {
-      console.warn('Firebase load error:', e);
+      console.warn('Kaizen V10: Firebase load error', e);
       return null;
     }
   }
 
-  function withTimeout(promise, ms){
+  function timeout(p, ms){
     return new Promise(function(resolve){
       var done = false;
-      var timer = setTimeout(function(){
-        if(done) return;
-        done = true;
-        resolve({ timedOut: true, value: null });
-      }, ms);
-
-      Promise.resolve(promise).then(function(value){
-        if(done) return;
-        done = true;
-        clearTimeout(timer);
-        resolve({ timedOut: false, value: value });
-      }).catch(function(){
-        if(done) return;
-        done = true;
-        clearTimeout(timer);
-        resolve({ timedOut: false, value: null });
-      });
+      var t = setTimeout(function(){ if(!done){ done = true; resolve({ok:false, value:null}); } }, ms);
+      Promise.resolve(p).then(function(v){ if(!done){ done = true; clearTimeout(t); resolve({ok:true, value:v}); } }).catch(function(){ if(!done){ done = true; clearTimeout(t); resolve({ok:true, value:null}); } });
     });
+  }
+
+  function writeLocal(st){
+    if(!isObject(st)) return;
+    var json = JSON.stringify(st);
+    window.__kaizenV10WritingState = true;
+    try {
+      STATE_KEYS.forEach(function(k){ try { nativeSet.call(localStorage, k, json); } catch(e) {} });
+    } finally {
+      window.__kaizenV10WritingState = false;
+    }
+    lastSnapshot = json;
+  }
+
+  function installWriteGate(){
+    if(writeGateInstalled) return;
+    writeGateInstalled = true;
+    try { if(typeof window.__kaizenUnlockPersistenceV9 === 'function') window.__kaizenUnlockPersistenceV9(); } catch(e) {}
+    Storage.prototype.setItem = function(key, value){
+      if(isStateKey(key) && !window.__kaizenV10WritingState){
+        var parsed = normalizeState(safeParse(String(value || 'null')));
+        var real = normalizeState(getRealState());
+        var parsedJson = jsonOf(parsed);
+        var realJson = jsonOf(real);
+        if(parsed && real && parsedJson === realJson) return nativeSet.apply(this, arguments);
+        console.warn('Kaizen V10: blocked legacy state write', key);
+        return undefined;
+      }
+      return nativeSet.apply(this, arguments);
+    };
   }
 
   async function writeFirebase(st, reason){
     if(!isObject(st) || savingFirebase) return;
-    if(!firebaseChecked && reason !== 'manual' && reason !== 'user') return;
-
     var doc = getFirebaseDoc();
     if(!doc) return;
-
     savingFirebase = true;
     try {
-      var payload = safeClone(st);
-      await doc.set({
-        data: JSON.stringify(payload),
-        updatedAt: Number(payload.__updatedAt || Date.now()),
-        syncVersion: VERSION
-      }, { merge: true });
-      console.log('Kaizen V9: Firebase guardado', reason || 'sync');
+      var payload = normalizeState(st);
+      await doc.set({ data: JSON.stringify(payload), updatedAt: Number(payload.__updatedAt || now()), syncVersion: VERSION }, { merge:true });
+      console.log('Kaizen V10: Firebase saved', reason || 'sync');
     } catch(e) {
-      console.warn('Firebase save error:', e);
+      console.warn('Kaizen V10: Firebase save error', e);
     } finally {
       savingFirebase = false;
     }
@@ -6232,100 +5723,79 @@ function closeMobileDrawer(){
 
   function scheduleFirebase(st, reason){
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(function(){
-      writeFirebase(st, reason || 'auto');
-    }, 350);
+    saveTimer = setTimeout(function(){ writeFirebase(st, reason); }, 300);
   }
 
-  function saveNow(reason, candidateData){
+  function saveNow(reason, candidateData, forceUser){
     if(!restoreDone && reason !== 'restore') return null;
-
-    var real = normalizeState(getRealState());
+    var reasonText = String(reason || 'auto');
+    var isUserSave = !!forceUser || /persist|manual|user|save|delete|task|client|event|report|package|goal|change|click|toggle|move/i.test(reasonText);
+    if(!isUserSave && !userDirty) return null;
+    var current = normalizeState(getRealState()) || {};
     var incoming = normalizeState(candidateData);
-    var chosen = real;
-
-    if(incoming){
-      var incomingTime = Number(incoming.__updatedAt || 0);
-      var realTime = Number(real && real.__updatedAt || 0);
-      if(!real || incomingTime > realTime) chosen = incoming;
-    }
-
-    if(!chosen) return null;
-
-    chosen.__updatedAt = Date.now();
+    var chosen = current;
+    if(incoming && Number(incoming.__updatedAt || 0) > Number(current.__updatedAt || 0)) chosen = incoming;
+    chosen.__updatedAt = now();
     chosen.__syncVersion = VERSION;
-    chosen = normalizeState(chosen);
-
     setRealState(chosen);
     writeLocal(chosen);
-    scheduleFirebase(chosen, reason || 'auto');
-
+    scheduleFirebase(chosen, reasonText);
+    userDirty = false;
     return chosen;
   }
 
   function rerenderCurrent(){
     var page = window.__kaizenDesiredPage || localStorage.getItem('kaizen-last-page') || 'dashboard';
-
     try { currentPage = page; } catch(e) {}
-
-    try {
-      if(typeof window.go === 'function') window.go(page);
-      else if(typeof go === 'function') go(page);
-    } catch(e) {}
-
-    try {
-      if(typeof window.renderPage === 'function') window.renderPage(page);
-      else if(typeof renderPage === 'function') renderPage(page);
-    } catch(e) {}
-
-    try { if(typeof window.fillSelects === 'function') window.fillSelects(); } catch(e) {}
-    try { if(typeof fillSelects === 'function') fillSelects(); } catch(e) {}
-    try { if(typeof window.updateBadges === 'function') window.updateBadges(); } catch(e) {}
-    try { if(typeof updateBadges === 'function') updateBadges(); } catch(e) {}
+    try { if(typeof window.fillSelects === 'function') window.fillSelects(); else if(typeof fillSelects === 'function') fillSelects(); } catch(e) {}
+    try { if(typeof window.go === 'function') window.go(page); else if(typeof go === 'function') go(page); } catch(e) {}
+    try { if(typeof window.renderPage === 'function') window.renderPage(page); else if(typeof renderPage === 'function') renderPage(page); } catch(e) {}
+    try { if(typeof window.updateBadges === 'function') window.updateBadges(); else if(typeof updateBadges === 'function') updateBadges(); } catch(e) {}
   }
 
-  function finishBoot(){
-    try { if(typeof window.__kaizenUnlockPersistenceV9 === 'function') window.__kaizenUnlockPersistenceV9(); } catch(e) {}
-    try { document.documentElement.classList.remove('kaizen-syncing'); } catch(e) {}
-    try { if(typeof window.__splashFinish === 'function') window.__splashFinish(); } catch(e) {}
-  }
-
-  function patchPersistFunctions(){
-    window.persist = function(){ return saveNow('persist'); };
+  function patchPersistenceAPI(){
+    window.persist = function(){ userDirty = true; return saveNow('persist', null, true); };
     try { persist = window.persist; } catch(e) {}
-
-    window.kaizenForceSave = function(){ return saveNow('manual'); };
+    window.kaizenForceSave = function(){ userDirty = true; return saveNow('manual', null, true); };
+    window.kaizenSaveAsTruth = window.kaizenForceSave;
     window._fbSave = function(data, opts){
-      var reason = opts && opts.force ? 'force' : 'direct';
-      return saveNow(reason, data);
+      var force = !!(opts && opts.force);
+      if(force) userDirty = true;
+      return saveNow(force ? 'force' : 'direct', data, force);
     };
     window._fbLoad = readFirebaseState;
-
     window.kaizenHardReloadFromFirebase = async function(){
       var fb = await readFirebaseState();
       if(fb){
-        firebaseChecked = true;
-        var normalized = mergeRuntimeDefaults(normalizeState(fb), getRealState());
-        normalized.__updatedAt = Number(normalized.__updatedAt || Date.now());
-        normalized.__syncVersion = VERSION;
-        setRealState(normalized);
-        writeLocal(normalized);
+        fb.__syncVersion = VERSION;
+        setRealState(fb);
+        writeLocal(fb);
+        restoredSource = 'firebase-manual';
         rerenderCurrent();
       }
       return fb;
     };
-
+    window.kaizenInspectSources = async function(){
+      var arr = readLocalCandidates();
+      var fb = await readFirebaseState();
+      var fbc = makeCandidate('firebase', fb);
+      if(fbc) arr.push(fbc);
+      arr.sort(function(a,b){ return (b.updatedAt || 0) - (a.updatedAt || 0); });
+      return arr.map(function(c){ return {source:c.source, updatedAt:c.updatedAt, updatedAtHuman:c.updatedAt ? new Date(c.updatedAt).toLocaleString() : null, clients:(c.state.clients || []).map(function(x){return x.name;}), events:(c.state.events || []).length, tasks:(c.state.tasks || []).length, bytes:jsonOf(c.state).length}; });
+    };
     window.kaizenSyncStatus = function(){
-      var st = getRealState() || {};
+      var st = normalizeState(getRealState()) || {};
       return {
         version: VERSION,
         restoreDone: restoreDone,
+        restoredSource: restoredSource,
         firebaseChecked: firebaseChecked,
         firebaseReady: !!getFirebaseDoc(),
         updatedAt: st.__updatedAt || null,
         updatedAtHuman: st.__updatedAt ? new Date(st.__updatedAt).toLocaleString() : null,
-        clients: Array.isArray(st.clients) ? st.clients.map(function(c){ return c.name; }) : [],
+        clients: (st.clients || []).map(function(c){ return c.name; }),
         blockedStartupWrites: (window.__kaizenBlockedStateWritesV9 || []).length,
+        writeGate: writeGateInstalled,
         keys: STATE_KEYS.slice()
       };
     };
@@ -6333,159 +5803,122 @@ function closeMobileDrawer(){
 
   function wrapMutator(name){
     var fn = window[name];
-    if(typeof fn !== 'function' || fn.__kaizenV9Wrapped) return;
-
+    if(typeof fn !== 'function' || fn.__kaizenV10Wrapped) return;
     var wrapped = function(){
+      userDirty = true;
       var result = fn.apply(this, arguments);
-      userChangedAfterRestore = restoreDone;
-      setTimeout(function(){ saveNow(name); }, 80);
+      setTimeout(function(){ saveNow(name, null, true); }, 100);
       return result;
     };
-
-    wrapped.__kaizenV9Wrapped = true;
+    wrapped.__kaizenV10Wrapped = true;
     window[name] = wrapped;
   }
 
-  function wrapAllMutators(){
-    [
-      'saveClient',
-      'deleteClient',
-      'saveProspect',
-      'moveProspect',
-      'deleteProspect',
-      'saveTask',
-      'changeTaskStatus',
-      'deleteTask',
-      'saveMember',
-      'deleteMember',
-      'saveEvent',
-      'saveReport',
-      'toggleOnboarding',
-      'saveGoalV5',
-      'savePackageV5',
-      'loginAdminV5',
-      'loginOperatorV5',
-      'logoutV5',
-      'loginV6',
-      'logoutV6'
-    ].forEach(wrapMutator);
-
+  function wrapAll(){
+    ['saveClient','deleteClient','saveProspect','moveProspect','deleteProspect','saveTask','changeTaskStatus','deleteTask','saveMember','deleteMember','saveEvent','saveReport','toggleOnboarding','saveGoalV5','savePackageV5','loginAdminV5','loginOperatorV5','loginV6','logoutV5','logoutV6'].forEach(wrapMutator);
     var goFn = window.go;
-    if(typeof goFn === 'function' && !goFn.__kaizenV9PageWrapped){
+    if(typeof goFn === 'function' && !goFn.__kaizenV10PageWrapped){
       var wrappedGo = function(page){
         try { localStorage.setItem('kaizen-last-page', page || 'dashboard'); } catch(e) {}
         return goFn.apply(this, arguments);
       };
-      wrappedGo.__kaizenV9PageWrapped = true;
+      wrappedGo.__kaizenV10PageWrapped = true;
       window.go = wrappedGo;
     }
   }
 
-  function startWatchdog(){
-    clearInterval(watchTimer);
-    watchTimer = setInterval(function(){
-      if(!restoreDone) return;
-      var st = getRealState();
-      if(!isObject(st)) return;
-      try {
-        var json = JSON.stringify(st);
-        if(json !== lastSnapshot){
-          saveNow('watch');
-        }
-      } catch(e) {}
-    }, 1200);
-  }
-
-  function installDomListeners(){
+  function installUserListeners(){
     document.addEventListener('change', function(){
       if(!restoreDone) return;
-      userChangedAfterRestore = true;
-      setTimeout(function(){ saveNow('change'); }, 120);
+      userDirty = true;
+      setTimeout(function(){ saveNow('change', null, true); }, 150);
     }, true);
-
     document.addEventListener('click', function(evt){
       if(!restoreDone) return;
       var el = evt.target;
       while(el && el !== document){
-        var text = String(el.textContent || '').toLowerCase();
-        var onclick = String(el.getAttribute && el.getAttribute('onclick') || '').toLowerCase();
-        if(
-          onclick.indexOf('save') !== -1 ||
-          onclick.indexOf('guardar') !== -1 ||
-          text.indexOf('guardar') !== -1 ||
-          text.indexOf('eliminar') !== -1 ||
-          text.indexOf('mover') !== -1
-        ){
-          userChangedAfterRestore = true;
-          setTimeout(function(){ saveNow('click'); }, 180);
+        var t = String(el.textContent || '').toLowerCase();
+        var oc = String(el.getAttribute && el.getAttribute('onclick') || '').toLowerCase();
+        if(oc.indexOf('save') !== -1 || oc.indexOf('guardar') !== -1 || t.indexOf('guardar') !== -1 || t.indexOf('eliminar') !== -1){
+          userDirty = true;
+          setTimeout(function(){ saveNow('click', null, true); }, 200);
           return;
         }
         el = el.parentNode;
       }
     }, true);
+    window.addEventListener('beforeunload', function(){
+      if(!restoreDone) return;
+      var st = normalizeState(getRealState());
+      if(st) writeLocal(st);
+    });
+  }
+
+  function startWatchdog(){
+    setInterval(function(){
+      if(!restoreDone || !userDirty) return;
+      var st = normalizeState(getRealState());
+      if(!st) return;
+      var j = jsonOf(st);
+      if(j && j !== lastSnapshot) saveNow('watch', st, true);
+    }, 1500);
+  }
+
+  function finishBoot(){
+    installWriteGate();
+    try { document.documentElement.classList.remove('kaizen-syncing'); } catch(e) {}
+    try { if(typeof window.__splashFinish === 'function') window.__splashFinish(); } catch(e) {}
   }
 
   async function restore(){
-    patchPersistFunctions();
-
-    var runtimeState = normalizeState(safeClone(getRealState()));
+    patchPersistenceAPI();
+    var runtime = makeCandidate('current', getRealState());
     var candidates = readLocalCandidates();
-    var firebaseResult = await withTimeout(readFirebaseState(), 3500);
-
-    if(!firebaseResult.timedOut){
+    if(runtime) candidates.push(runtime);
+    var fbResult = await timeout(readFirebaseState(), 4000);
+    if(fbResult.ok){
       firebaseChecked = true;
-      var fbCandidate = makeCandidate('firebase', firebaseResult.value);
-      if(fbCandidate) candidates.push(fbCandidate);
-    } else {
+      var fbc = makeCandidate('firebase', fbResult.value);
+      if(fbc) candidates.push(fbc);
+    }
+    var best = chooseBest(candidates);
+    var chosen = best ? best.state : (runtime ? runtime.state : normalizeState({}));
+    chosen.__syncVersion = VERSION;
+    if(!chosen.__updatedAt) chosen.__updatedAt = now();
+    restoredSource = best ? best.source : 'empty';
+    setRealState(chosen);
+    writeLocal(chosen);
+    restoreDone = true;
+    window._fbLoaded = true;
+    window._fbAllowSave = true;
+    patchPersistenceAPI();
+    wrapAll();
+    setTimeout(wrapAll, 500);
+    setTimeout(wrapAll, 1500);
+    setTimeout(wrapAll, 3000);
+    rerenderCurrent();
+    finishBoot();
+    startWatchdog();
+    console.log('Kaizen V10: restored from', restoredSource, window.kaizenSyncStatus());
+    if(!fbResult.ok){
       readFirebaseState().then(function(fb){
         firebaseChecked = true;
-        if(!fb || userChangedAfterRestore) return;
-        var current = makeCandidate('current', getRealState());
+        if(userDirty || !fb) return;
         var remote = makeCandidate('firebase-late', fb);
-        if(remote && (!current || Number(remote.updatedAt || 0) > Number(current.updatedAt || 0))){
-          var mergedLate = mergeRuntimeDefaults(remote.state, getRealState());
-          setRealState(mergedLate);
-          writeLocal(mergedLate);
+        var current = makeCandidate('current-late', getRealState());
+        if(remote && (!current || Number(remote.updatedAt || 0) > Number(current.updatedAt || 0) + 1500)){
+          setRealState(remote.state);
+          writeLocal(remote.state);
+          restoredSource = 'firebase-late';
           rerenderCurrent();
         }
       });
     }
-
-    var currentCandidate = makeCandidate('current', runtimeState);
-    if(currentCandidate) candidates.push(currentCandidate);
-
-    var best = chooseBest(candidates);
-    var chosen = best ? best.state : (runtimeState || {});
-    chosen = mergeRuntimeDefaults(chosen, runtimeState);
-    chosen.__updatedAt = Number(chosen.__updatedAt || Date.now());
-    chosen.__syncVersion = VERSION;
-
-    setRealState(chosen);
-    writeLocal(chosen);
-
-    restoreDone = true;
-    window._fbAllowSave = true;
-
-    patchPersistFunctions();
-    wrapAllMutators();
-    setTimeout(wrapAllMutators, 500);
-    setTimeout(wrapAllMutators, 1600);
-    setTimeout(wrapAllMutators, 3200);
-
-    rerenderCurrent();
-    finishBoot();
-
-    if(firebaseChecked){
-      scheduleFirebase(chosen, 'restore');
-    }
-
-    startWatchdog();
-    console.log('Kaizen V9: estado restaurado desde', best ? best.source : 'runtime', window.kaizenSyncStatus());
   }
 
-  installDomListeners();
-  restore().catch(function(error){
-    console.warn('Kaizen V9 restore error:', error);
+  installUserListeners();
+  restore().catch(function(e){
+    console.warn('Kaizen V10: restore failed', e);
     restoreDone = true;
     finishBoot();
     startWatchdog();
@@ -6493,16 +5926,24 @@ function closeMobileDrawer(){
 })();
 </script>
 
-
-<!-- ── SERVICE WORKER REGISTRATION ── -->
+<!-- KAIZEN V10 CACHE CLEANUP -->
 <script>
-if('serviceWorker' in navigator){
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js')
-      .then(reg => console.log('✓ Service Worker registrado:', reg.scope))
-      .catch(err => console.warn('SW error:', err));
-  });
-}
+(function(){
+  try {
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.getRegistrations().then(function(regs){
+        regs.forEach(function(reg){ reg.unregister(); });
+        if(regs.length) console.log('Kaizen V10: service workers disabled', regs.length);
+      });
+    }
+    if(window.caches && caches.keys){
+      caches.keys().then(function(keys){
+        keys.forEach(function(key){ caches.delete(key); });
+        if(keys.length) console.log('Kaizen V10: caches cleared', keys.length);
+      });
+    }
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>
